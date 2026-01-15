@@ -44,11 +44,11 @@ type Report = {
 };
 
 function fmtInt(n: number | null) {
-  if (n === null || n === undefined) return "—";
+  if (n === null || n === undefined) return "пїЅ";
   return new Intl.NumberFormat("ru-RU").format(n);
 }
 function fmtPct(n: number | null) {
-  if (n === null || n === undefined) return "—";
+  if (n === null || n === undefined) return "пїЅ";
   return `${n.toFixed(2)}%`;
 }
 function fmtDate(iso: string) {
@@ -62,7 +62,7 @@ function fmtDate(iso: string) {
 }
 
 function fmtAcc01(n: number | null) {
-  if (n == null) return "—";
+  if (n == null) return "пїЅ";
   return `${(n * 100).toFixed(2)}%`;
 }
 function fmtAgo(iso: string | null) {
@@ -140,7 +140,7 @@ export default function App() {
   const visibleReports = useMemo(() => {
     const byMode = reports.filter((r) => (r.mode ?? "mania") === mode);
 
-    // если профиль не выбран — не показываем ничего
+    // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
     if (selectedProfileId == null) return [];
 
     const pid = String(selectedProfileId);
@@ -262,46 +262,46 @@ export default function App() {
       FL: "Flashlight",
 
       // Special
-      RL: "Relax",        // важно: RL (а не RX)   [oai_citation:1‡osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      RL: "Relax",        // пїЅпїЅпїЅпїЅпїЅ: RL (пїЅ пїЅпїЅ RX)   [oai_citation:1пїЅosu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
       AP: "Autopilot",
       SO: "Spun Out",
 
       // Mania special
       MR: "Mirror",
       RD: "Random",
-      CP: "Co-op",        // важно: CP (а не CO)   [oai_citation:2‡osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      CP: "Co-op",        // пїЅпїЅпїЅпїЅпїЅ: CP (пїЅ пїЅпїЅ CO)   [oai_citation:2пїЅosu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
 
       // Other
       TD: "Touch Device",
       AT: "Auto",
-      CM: "Cinema",       // важно: CM (а не CN)   [oai_citation:3‡osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      CM: "Cinema",       // пїЅпїЅпїЅпїЅпїЅ: CM (пїЅ пїЅпїЅ CN)   [oai_citation:3пїЅosu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
       SV2: "ScoreV2",
-      TP: "Target Practice", // legacy/experimental  [oai_citation:4‡osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      TP: "Target Practice", // legacy/experimental  [oai_citation:4пїЅosu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
     };
 
-    // нормализация того, что может прилетать как угодно
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
     function normalizeMod(raw: string) {
       let code = String(raw ?? "").trim().toUpperCase();
 
-      // если вдруг прилетает "K4" -> "4K" (ты про это и говоришь)
+      // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ "K4" -> "4K" (пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
       const m = code.match(/^K(\d+)$/);
       if (m) code = `${m[1]}K`;
 
-      // ключи: 1K..9K
+      // пїЅпїЅпїЅпїЅпїЅ: 1K..9K
       if (/^\dK$/.test(code)) return code;
 
-      // поддержка частых "левых" алиасов из интернета/старых либ:
-      if (code === "RX") code = "RL";   // иногда пишут RX, но мод — RL  [oai_citation:5‡osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
-      if (code === "CN") code = "CM";   // иногда CN, но мод — CM  [oai_citation:6‡osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
-      if (code === "CO") code = "CP";   // иногда CO, но мод — CP  [oai_citation:7‡osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ "пїЅпїЅпїЅпїЅпїЅ" пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ:
+      if (code === "RX") code = "RL";   // пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ RX, пїЅпїЅ пїЅпїЅпїЅ пїЅ RL  [oai_citation:5пїЅosu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      if (code === "CN") code = "CM";   // пїЅпїЅпїЅпїЅпїЅпїЅ CN, пїЅпїЅ пїЅпїЅпїЅ пїЅ CM  [oai_citation:6пїЅosu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      if (code === "CO") code = "CP";   // пїЅпїЅпїЅпїЅпїЅпїЅ CO, пїЅпїЅ пїЅпїЅпїЅ пїЅ CP  [oai_citation:7пїЅosu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
 
       return code;
     }
 
-    // имя для тултипа
+    // пїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     function modFullName(code: string) {
       if (/^\dK$/.test(code)) return `${code[0]} Keys`; // 4K => 4 Keys
-      return MOD_NAMES[code] ?? code; // фоллбек
+      return MOD_NAMES[code] ?? code; // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     }
 
     const rankImg = (rankRaw: string | null) => {
@@ -316,7 +316,7 @@ export default function App() {
         B: "https://osu.ppy.sh/assets/images/GradeSmall-B.e19fc91b.svg",
         C: "https://osu.ppy.sh/assets/images/GradeSmall-C.6bb75adc.svg",
         D: "https://osu.ppy.sh/assets/images/GradeSmall-D.6b170c4c.svg",
-        // F — нет ссылки, будет фоллбек текстом ниже
+        // F пїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
       };
 
       return map[r] ?? null;
@@ -324,8 +324,8 @@ export default function App() {
 
     const rankLabel = (rankRaw: string | null) => {
       const r = (rankRaw ?? "").toUpperCase();
-      if (!r) return "—";
-      // osu иногда может отдать X/XH, мы оставим как есть
+      if (!r) return "пїЅ";
+      // osu пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ X/XH, пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
       return r;
     };
 
@@ -398,7 +398,7 @@ export default function App() {
 
                 <div className="scoreRight">
                   <div className="scoreAcc">{fmtAcc01(s.accuracy)}</div>
-                  <div className="scorePp">{s.pp != null ? `${Math.round(s.pp)}pp` : "—"}</div>
+                  <div className="scorePp">{s.pp != null ? `${Math.round(s.pp)}pp` : "пїЅ"}</div>
                 </div>
               </button>
             );
@@ -431,7 +431,7 @@ export default function App() {
                   setSelectedProfileId(idNum);
                   setSelectedId(null);
 
-                  // сохранить выбор в main.ts (profiles.json)
+                  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ main.ts (profiles.json)
                   if (idNum != null) {
                     try {
                       await api.profilesSelect(String(idNum));
@@ -658,7 +658,7 @@ export default function App() {
                 <div>
                   <div className="modalTitle">{selected.title}</div>
                   <div className="modalSub">
-                    {fmtDate(selected.createdAt)} • {selected.mode}
+                    {fmtDate(selected.createdAt)} пїЅ {selected.mode}
                   </div>
                 </div>
               </div>
@@ -743,7 +743,7 @@ export default function App() {
         </div>
       )}
 
-      {loading && <div className="loading">Loading stats from osu…</div>}
+      {loading && <div className="loading">Loading stats from osuпїЅ</div>}
 
       {profilesOpen && (
         <div className="overlay" onMouseDown={() => setProfilesOpen(false)}>

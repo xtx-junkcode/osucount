@@ -1044,3 +1044,42 @@ body {
   border-color: rgba(255, 102, 170, 0.45);
   background: rgba(255, 102, 170, 0.14);
 }
+
+/* чтобы фон был на всю ширину */
+.app {
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Ќќ¬ќ≈: ограничиваем контент */
+.content,
+.modal,
+.profilesModal {
+  max-width: 1200px;
+  /* подбери: 1100Ц1400 */
+  margin: 0 auto;
+}
+
+/* чтобы на широких экранах не прилипало к кра€м */
+.topbar,
+.content {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.topbar {
+  width: 100%;
+}
+
+/* контент хедера как в Electron */
+.topbarInner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-left: 16px;
+  padding-right: 16px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
