@@ -1,0 +1,1046 @@
+:root {
+  --bg: #120f16;
+  --panel: rgba(255, 255, 255, 0.06);
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.6);
+  --pink: #ff66aa;
+  --stroke: rgba(255, 255, 255, 0.12);
+  --shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* allow dragging the window by the top bar */
+.topbar {
+  -webkit-app-region: drag;
+}
+
+/* but buttons/switch should still be clickable */
+.actions,
+.btn,
+.iosSwitch,
+.modeSwitch,
+input,
+button {
+  -webkit-app-region: no-drag;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 500px at 40% -10%, rgba(255, 102, 170, 0.18), transparent 60%),
+    radial-gradient(900px 600px at 100% 0%, rgba(120, 80, 255, 0.14), transparent 55%),
+    var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+}
+
+/* ===== App layout (NO global scroll) ===== */
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.topbar {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 12px 85px;
+  border-bottom: 1px solid var(--stroke);
+  backdrop-filter: blur(16px);
+  background: rgba(18, 15, 22, 0.45);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.title {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+/* Buttons */
+.btn {
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  border-color: rgba(255, 102, 170, 0.35);
+  background: linear-gradient(180deg, rgba(255, 102, 170, 0.22), rgba(255, 102, 170, 0.10));
+}
+
+.btn.primary:hover {
+  background: linear-gradient(180deg, rgba(255, 102, 170, 0.30), rgba(255, 102, 170, 0.14));
+}
+
+.btn.danger {
+  border-color: rgba(255, 90, 90, 0.35);
+  background: linear-gradient(180deg, rgba(255, 90, 90, 0.20), rgba(255, 90, 90, 0.08));
+}
+
+.btn.ghost {
+  background: transparent;
+}
+
+.btn.tiny {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+/* Layout */
+.content {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 14px;
+  padding: 14px;
+  overflow: hidden;
+  /* важно: общий скролл выключен */
+  min-height: 0;
+  /* важно для grid + overflow */
+}
+
+.list,
+.preview {
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.listHeader,
+.previewHeader {
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--stroke);
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+/* ===== Scroll areas ===== */
+
+/* list */
+.listBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  /* padding будет внутри listBodyScroll */
+}
+
+.listBodyScroll {
+  height: 100%;
+  overflow: auto;
+  padding: 10px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* <-- ВОТ ТУТ расстояние как было (до правок) */
+
+  scrollbar-gutter: stable;
+}
+
+/* preview */
+.previewBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  padding-bottom: 18px;
+  scrollbar-gutter: stable;
+}
+
+.empty {
+  color: var(--muted);
+  padding: 10px;
+}
+
+/* Report rows */
+.row {
+  text-align: left;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--text);
+  width: 100%;
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.row.active {
+  border-color: rgba(255, 102, 170, 0.40);
+  box-shadow: 0 0 0 1px rgba(255, 102, 170, 0.10) inset;
+}
+
+.rowMain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.rowAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  object-fit: cover;
+  flex: 0 0 auto;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.rowText {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.rowTitle {
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowMeta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Preview card */
+.previewEmpty {
+  color: var(--muted);
+}
+
+.card {
+  padding: 0;
+  /* previewBody уже с паддингом */
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardTopLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cardTitle {
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.cardSub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stat {
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 12px;
+}
+
+.stat.wide {
+  grid-column: 1 / -1;
+}
+
+.stat .k {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stat .v {
+  font-size: 20px;
+  font-weight: 900;
+  margin-top: 6px;
+}
+
+.stat .v.small {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+/* Grades */
+.grades {
+  display: flex;
+  gap: 18px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.grade {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 44px;
+}
+
+.gradeImg {
+  width: 46px;
+  height: 28px;
+  display: block;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+}
+
+.gradeNum {
+  font-size: 18px;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+/* Toast loading */
+.loading {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+}
+
+/* Modal (report open) */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.70);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.modal {
+  width: min(860px, 96vw);
+  border-radius: 22px;
+  border: 1px solid var(--stroke);
+  background:
+    radial-gradient(900px 420px at 10% 0%, rgba(255, 102, 170, 0.12), transparent 60%),
+    rgba(12, 10, 15, 0.98);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+
+.modalHeader {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.modalHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.modalAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  object-fit: cover;
+  flex: 0 0 auto;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.modalTitle {
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.modalSub {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.modalBody {
+  padding: 16px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.heroItem {
+  border: 1px solid rgba(255, 102, 170, 0.22);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 102, 170, 0.16), rgba(255, 255, 255, 0.04));
+  padding: 14px;
+}
+
+.heroK {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+}
+
+.heroV {
+  font-size: 34px;
+  font-weight: 950;
+  margin-top: 6px;
+  letter-spacing: -0.4px;
+}
+
+/* iOS-like switch */
+.modeSwitch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 10px;
+}
+
+.modeLabel {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  opacity: 0.7;
+}
+
+.modeLabel.on {
+  opacity: 1;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.iosSwitch {
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.10);
+  position: relative;
+  padding: 0;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.iosSwitch .knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  transition: transform 160ms ease;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+}
+
+.iosSwitch.on {
+  background: rgba(255, 102, 170, 0.30);
+  border-color: rgba(255, 102, 170, 0.42);
+}
+
+.iosSwitch.on .knob {
+  transform: translateX(22px);
+}
+
+/* Profiles selector + dots button */
+.profilesBlock {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 30px;
+}
+
+.profileSelectWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 24px;
+}
+
+.profileSelect {
+  height: 36px;
+  width: 170px;
+  padding: 0 44px 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.92);
+  outline: none;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.profileSelect:hover {
+  border-color: rgba(255, 70, 160, 0.35);
+}
+
+.profileSelect:focus {
+  border-color: rgba(255, 70, 160, 0.55);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.25),
+    0 0 0 2px rgba(255, 70, 160, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.profileSelect option {
+  background: #141218;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.profileSelectChevron {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  border-right: 2px solid rgba(255, 255, 255, 0.7);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.7);
+  transform: translateY(-50%) rotate(45deg);
+  opacity: 0.9;
+}
+
+.gearBtn {
+  height: 36px;
+  width: 36px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  margin-left: -15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  -webkit-font-smoothing: antialiased;
+  transform: translateZ(0);
+}
+
+.gearBtn:hover {
+  border-color: rgba(255, 70, 160, 0.35);
+}
+
+/* Three dots icon */
+.dots {
+  display: flex;
+  gap: 3px;
+}
+
+.dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.gearBtn:hover .dots i {
+  background: rgba(255, 255, 255, 1);
+}
+
+/* Profiles overlay */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+}
+
+.profilesModal {
+  width: 520px;
+  max-width: calc(100vw - 40px);
+  border-radius: 18px;
+  background: rgba(30, 25, 34, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.profilesHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.profilesTitle {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.profilesBody {
+  padding: 14px 16px 16px;
+}
+
+.profilesAddRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.profilesInput {
+  flex: 1;
+  height: 40px;
+  border-radius: 12px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.92);
+  outline: none;
+}
+
+.profilesInput:focus {
+  border-color: rgba(255, 70, 160, 0.45);
+  box-shadow: 0 0 0 3px rgba(255, 70, 160, 0.12);
+}
+
+.profilesError {
+  margin-top: 10px;
+  color: rgba(255, 120, 160, 0.95);
+  font-weight: 600;
+}
+
+.profilesList {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.profilesItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.profilesAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profilesName {
+  flex: 1;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* --- scores blocks (best / firsts) --- */
+.scoresBlock {
+  width: 100%;
+}
+
+.scoresTitle {
+  font-weight: 800;
+  font-size: 14px;
+  opacity: 0.9;
+  margin-bottom: 10px;
+}
+
+.scoresList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scoreItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.scoreItem:hover {
+  border-color: rgba(255, 70, 160, 0.35);
+}
+
+.scoreRank {
+  width: 44px;
+  height: 32px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
+}
+
+.scoreMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.scoreSong {
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scoreSongTitle {
+  opacity: 0.95;
+}
+
+.scoreSongArtist {
+  opacity: 0.7;
+  font-weight: 700;
+}
+
+.scoreDiff {
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scoreMods {
+  opacity: 0.85;
+  font-weight: 800;
+}
+
+.scoreAgo {
+  opacity: 0.8;
+}
+
+.scoreRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 92px;
+}
+
+.scoreAcc {
+  font-weight: 900;
+  opacity: 0.95;
+}
+
+.scorePp {
+  margin-top: 2px;
+  font-weight: 800;
+  opacity: 0.75;
+}
+
+/* чтобы скролл не дёргал ширину */
+.listBodyScroll::-webkit-scrollbar,
+.previewBody::-webkit-scrollbar {
+  width: 8px;
+}
+
+/* ===== scores: rank badge (NO bubble) + readable text ===== */
+
+.scoreItem {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.scoreSongTitle {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.scoreSongArtist,
+.scoreDiff {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.scoreRight {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.scoreAcc {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.scorePp {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* убрать "пузырь" у ранга */
+.scoreRank {
+  width: 44px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+}
+
+/* картинка ранга */
+.scoreRankImg {
+  width: 44px;
+  height: 32px;
+  display: block;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+}
+
+.scoreDiff {
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: 0.75;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scoreDiffText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scoreMods {
+  display: inline-flex;
+  gap: 6px;
+  flex: 0 0 auto;
+  opacity: 1;
+}
+
+.modChip {
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+
+  display: inline-flex;
+  align-items: center;
+  /* ВОТ ЭТО ГЛАВНОЕ */
+  justify-content: center;
+
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  /* чтобы не тянулся */
+
+  border: 1px solid rgba(120, 80, 255, 0.28);
+  background: rgba(120, 80, 255, 0.10);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.scoreAgo {
+  flex: 0 0 auto;
+  opacity: 0.8;
+}
+
+/* ===== Mod chip tooltip (custom) ===== */
+
+.modChip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 22px;
+  /* было 26 */
+  padding: 0 8px;
+  /* было 10 */
+  border-radius: 999px;
+
+  font-size: 11px;
+  /* было 12 */
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.25px;
+  /* чуть компактнее */
+
+  border: 1px solid rgba(140, 90, 255, 0.28);
+  background: rgba(80, 45, 140, 0.14);
+  color: rgba(255, 255, 255, 0.9);
+
+  cursor: default;
+  user-select: none;
+}
+
+/* тултип */
+.modChip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%) translateY(2px);
+
+  padding: 8px 10px;
+  border-radius: 10px;
+
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(18, 15, 22, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 9999;
+}
+
+/* стрелочка */
+.modChip::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+
+  width: 10px;
+  height: 10px;
+  rotate: 45deg;
+
+  background: rgba(18, 15, 22, 0.92);
+  border-right: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 9998;
+}
+
+/* показ */
+.modChip:hover::after,
+.modChip:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.modChip:hover::before,
+.modChip:focus-visible::before {
+  opacity: 1;
+}
+
+/* чтобы тултип не обрезался, даже если родитель с overflow */
+.scoreItem {
+  overflow: visible;
+}
+
+.scoreMain {
+  overflow: visible;
+}
+
+.scoreDiff {
+  overflow: visible;
+}
+
+.scoreMods {
+  overflow: visible;
+}
+
+/* если хочешь чуть приятнее при наведении */
+.modChip:hover {
+  border-color: rgba(255, 102, 170, 0.45);
+  background: rgba(255, 102, 170, 0.14);
+}
