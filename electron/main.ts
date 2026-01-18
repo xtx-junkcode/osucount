@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, net } from "electron";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -321,6 +321,45 @@ async function createMainWindow() {
     await mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
 }
+
+ipcMain.handle("img:fetchDataUrl", async (_event, url: string) => {
+  if (!url || typeof url !== "string") return null;
+
+  // безопасность на минималках: разрешим только http/https
+  if (!/^https?:\/\//i.test(url)) return null;
+
+  return await new Promise<string | null>((resolve) => {
+    try {
+      const request = net.request(url);
+
+      request.on("response", (response) => {
+        const chunks: Buffer[] = [];
+
+        response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => {
+          const buf = Buffer.concat(chunks);
+
+          const contentTypeRaw = response.headers["content-type"];
+          const contentType = Array.isArray(contentTypeRaw)
+            ? contentTypeRaw[0]
+            : contentTypeRaw;
+
+          const mime = (contentType || "image/png").split(";")[0].trim();
+
+          const base64 = buf.toString("base64");
+          resolve(`data:${mime};base64,${base64}`);
+        });
+
+        response.on("error", () => resolve(null));
+      });
+
+      request.on("error", () => resolve(null));
+      request.end();
+    } catch {
+      resolve(null);
+    }
+  });
+});
 
 // ----------------- IPC -----------------
 ipcMain.handle("reports:list", async () => {

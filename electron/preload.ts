@@ -14,4 +14,7 @@ contextBridge.exposeInMainWorld("api", {
   profilesAddByUrl: (url: string) => ipcRenderer.invoke("profiles:addByUrl", url),
   profilesSelect: (id: string) => ipcRenderer.invoke("profiles:select", id),
   profilesRemove: (id: string) => ipcRenderer.invoke("profiles:remove", id),
+
+  // images (for screenshots: bypass CORS)
+  imgFetchDataUrl: (url: string) => ipcRenderer.invoke("img:fetchDataUrl", url),
 });

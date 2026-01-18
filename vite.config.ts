@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   const isWeb = mode === "web";
 
   return {
-    base: isWeb ? `/${REPO}/` : "/",
+    base: isWeb ? "./" : "/",
     plugins: [
       react(),
       // Electron включаем только когда НЕ web

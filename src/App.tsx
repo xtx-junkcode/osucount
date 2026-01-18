@@ -1,6 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./app.css";
+// SVG — для обычного UI
+import gradeSSSilver from "./assets/grades/ss_silver.svg";
+import gradeSS from "./assets/grades/ss.svg";
+import gradeSSilver from "./assets/grades/s_silver.svg";
+import gradeS from "./assets/grades/s.svg";
+import gradeA from "./assets/grades/a.svg";
+
+// PNG — ТОЛЬКО для скриншота
+// PNG — ТОЛЬКО для скриншота
+import gradeSSSilverPng from "./assets/grades/ss_silver.png";
+import gradeSSPng from "./assets/grades/ss.png";
+import gradeSSilverPng from "./assets/grades/s_silver.png";
+import gradeSPng from "./assets/grades/s.png";
+import gradeAPng from "./assets/grades/a.png";
 import { webApi } from "./webApi";
+import html2canvas from "html2canvas";
+
 
 type ScoreItem = {
   artist: string;
@@ -51,6 +67,33 @@ function fmtPct(n: number | null) {
   if (n === null || n === undefined) return "�";
   return `${n.toFixed(2)}%`;
 }
+
+function fmtSignedInt(n: number | null) {
+  if (n == null) return "—";
+  const sign = n > 0 ? "+" : "";
+  return sign + new Intl.NumberFormat("ru-RU").format(Math.round(n));
+}
+
+function fmtSignedPct(n: number | null) {
+  if (n == null) return "—";
+  const sign = n > 0 ? "+" : "";
+  return sign + n.toFixed(2) + "%";
+}
+
+function diffClass(d: number | null) {
+  if (d == null) return "";
+  if (d > 0) return "diffUp";
+  if (d < 0) return "diffDown";
+  return "diffEq";
+}
+
+function diffArrow(d: number | null) {
+  if (d == null) return "";
+  if (d > 0) return "↑";
+  if (d < 0) return "↓";
+  return "→";
+}
+
 function fmtDate(iso: string) {
   const d = new Date(iso);
   const dd = String(d.getDate()).padStart(2, "0");
@@ -59,6 +102,42 @@ function fmtDate(iso: string) {
   const hh = String(d.getHours()).padStart(2, "0");
   const mi = String(d.getMinutes()).padStart(2, "0");
   return `${dd}.${mm}.${yyyy} ${hh}:${mi}`;
+}
+
+function fmtMode(mode: "osu" | "mania") {
+  if (mode === "osu") return "osu!";
+  return "osu!mania";
+}
+
+function fmtDiffDaysHours(fromIso: string, toIso: string) {
+  const from = new Date(fromIso).getTime();
+  const to = new Date(toIso).getTime();
+
+  const diffMs = Math.abs(to - from);
+  const totalHours = Math.floor(diffMs / 36e5); // 36e5 = 60*60*1000
+
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+
+  const dWord = days === 1 ? "day" : "days";
+  const hWord = hours === 1 ? "hour" : "hours";
+
+  if (days > 0 && hours > 0) return `${days} ${dWord} ${hours} ${hWord}`;
+  if (days > 0) return `${days} ${dWord}`;
+  return `${hours} ${hWord}`;
+}
+
+function progressText(fromIso?: string | null, toIso?: string | null) {
+  if (!fromIso || !toIso) return null;
+
+  const from = new Date(fromIso).getTime();
+  const to = new Date(toIso).getTime();
+
+  // если RESULT старее SOURCE (сравнение "назад") — не "progress"
+  if (to < from) return "That’s the difference :)";
+
+  const span = fmtDiffDaysHours(fromIso, toIso);
+  return `Progress in ${span}`;
 }
 
 function fmtAcc01(n: number | null) {
@@ -102,8 +181,14 @@ export default function App() {
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [profilesOpen, setProfilesOpen] = useState(false);
+  const [profilesClosing, setProfilesClosing] = useState(false);
   const [profileLink, setProfileLink] = useState("");
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [showChanges, setShowChanges] = useState(false);
+  const [sourceId, setSourceId] = useState<string | null>(null);
+  const [resultId, setResultId] = useState<string | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const [shotAskOpen, setShotAskOpen] = useState(false);
 
   async function refresh() {
     const list = (await api.listReports()) as Report[];
@@ -140,7 +225,6 @@ export default function App() {
   const visibleReports = useMemo(() => {
     const byMode = reports.filter((r) => (r.mode ?? "mania") === mode);
 
-    // ���� ������� �� ������ � �� ���������� ������
     if (selectedProfileId == null) return [];
 
     const pid = String(selectedProfileId);
@@ -156,9 +240,41 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, reports, selectedProfileId]);
 
-  const selected = useMemo(
-    () => visibleReports.find((r) => r.id === (openId ?? selectedId)) ?? null,
-    [visibleReports, selectedId, openId]
+  const source = useMemo(
+    () => (sourceId ? visibleReports.find((r) => r.id === sourceId) ?? null : null),
+    [visibleReports, sourceId]
+  );
+
+  const result = useMemo(
+    () => (resultId ? visibleReports.find((r) => r.id === resultId) ?? null : null),
+    [visibleReports, resultId]
+  );
+
+  // что показываем в превью:
+  // - если showChanges ON -> показываем result
+  // - если OFF -> как раньше selected/open
+  const selected = useMemo(() => {
+    if (showChanges) return result;
+    return visibleReports.find((r) => r.id === (openId ?? selectedId)) ?? null;
+  }, [showChanges, result, visibleReports, selectedId, openId]);
+
+  // какой репорт реально открыт в модалке
+  const openReport = useMemo(() => {
+    if (!openId) return null;
+    return visibleReports.find((r) => r.id === openId) ?? null;
+  }, [openId, visibleReports]);
+
+  // показывать дельты в модалке только если:
+  // - comparison on
+  // - source выбран
+  // - result выбран
+  // - и открыта именно RESULT (а не SOURCE)
+  const showModalDiffs = !!(
+    showChanges &&
+    source &&
+    resultId &&
+    openReport &&
+    openReport.id === resultId
   );
 
   async function onAddProfile() {
@@ -206,6 +322,207 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
+  }
+
+  const WORKER_BASE = (import.meta as any).env?.VITE_WORKER_BASE || "";
+  // пример потом: VITE_WORKER_BASE="https://xxx.yyy.workers.dev"
+
+  const IMG_PROXY = WORKER_BASE
+    ? `${String(WORKER_BASE).replace(/\/$/, "")}/img?url=`
+    : "/img?url="; // если вдруг воркер на том же домене (редко)
+
+
+  const GRADE_PNG_BY_KEY: Record<"ssh" | "ss" | "sh" | "s" | "a", string> = {
+    ssh: gradeSSSilverPng,
+    ss: gradeSSPng,
+    sh: gradeSSilverPng,
+    s: gradeSPng,
+    a: gradeAPng,
+  };
+
+  async function doModalScreenshot() {
+    const content = modalRef.current;
+    if (!content) return;
+
+    const modal = content.closest(".modal") as HTMLElement | null;
+    if (!modal) return;
+
+
+
+    // 1) создаём невидимую "студию"
+    const wrap = document.createElement("div");
+    wrap.className = "sshotWrap";
+    document.body.appendChild(wrap);
+
+    // 2) клонируем модалку целиком (ВАЖНО: не content)
+    const clone = modal.cloneNode(true) as HTMLElement;
+
+    // 3) фикс: внутри клона не должно быть анимаций/трансформаций
+    clone.style.animation = "none";
+    clone.style.transform = "none";
+    clone.style.opacity = "1";
+
+    wrap.appendChild(clone);
+
+    // --- SWITCH GRADES TO PNG FOR SCREENSHOT (clone only) ---
+    const gradeImgs = Array.from(
+      clone.querySelectorAll("img.gradeImg")
+    ) as HTMLImageElement[];
+
+    gradeImgs.forEach((img) => {
+      const key = img.getAttribute("data-grade") as ("ssh" | "ss" | "sh" | "s" | "a" | null);
+      if (!key) return;
+
+      const png = GRADE_PNG_BY_KEY[key];
+      if (!png) return;
+
+      img.dataset.svgSrc = img.src; // запоминаем что было
+      img.src = png;                // ставим png
+    });
+
+
+    const liveGrade = modal.querySelector("img.gradeImg") as HTMLImageElement | null;
+    const rect = liveGrade?.getBoundingClientRect();
+
+    const gw = rect ? Math.round(rect.width) : 46;
+    const gh = rect ? Math.round(rect.height) : 23;
+
+    // scale — только качество PNG, не размер элементов
+    const scale = Math.max(2, Math.round(window.devicePixelRatio || 2));
+
+
+    function forceGradeSize(root: HTMLElement, gw: number, gh: number) {
+      root.querySelectorAll("img.gradeImg").forEach((img) => {
+        const el = img as HTMLImageElement;
+
+        // убираем эффекты, которые html2canvas часто корявит
+        el.style.filter = "none";
+        el.style.transform = "none";
+
+        // фиксируем размер максимально жёстко
+        el.style.width = `${gw}px`;
+        el.style.height = `${gh}px`;
+        el.style.minWidth = `${gw}px`;
+        el.style.minHeight = `${gh}px`;
+        el.style.maxWidth = `${gw}px`;
+        el.style.maxHeight = `${gh}px`;
+
+        el.style.display = "block";
+        el.style.objectFit = "contain";
+        el.style.objectPosition = "center";
+        el.style.flex = "0 0 auto";
+
+        el.setAttribute("width", String(gw));
+        el.setAttribute("height", String(gh));
+
+        (el as any).width = gw;
+        (el as any).height = gh;
+      });
+    }
+    forceGradeSize(clone, gw, gh);
+
+    // 4) инлайним все <img> в клоне (чтобы CORS/рендер не ломался)
+    async function imgToDataURL(url: string) {
+
+      const proxied = IMG_PROXY + encodeURIComponent(url);
+      const resp = await fetch(proxied, { cache: "no-store" });
+      if (!resp.ok) throw new Error(`proxy fetch failed: ${resp.status}`);
+      const blob = await resp.blob();
+
+      return await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+    }
+
+    const imgs = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
+    await Promise.all(
+      imgs.map(async (img) => {
+        const src = img.getAttribute("src") || img.currentSrc || img.src;
+        if (!src || src.startsWith("data:")) return;
+
+        // ✅ ЛОКАЛЬНЫЕ КАРТИНКИ НЕ ТРОГАЕМ (Vite assets)
+        if (src.includes("/assets/") || src.startsWith("/") || src.startsWith("./") || src.startsWith("../")) {
+          return;
+        }
+
+        try {
+          img.crossOrigin = "anonymous";
+          const dataUrl = await imgToDataURL(src);
+          img.src = dataUrl;
+        } catch {
+          // оставляем как есть
+        }
+      })
+    );
+
+    // 5) ждём декодирование картинок (особенно svg)
+    await Promise.all(
+      imgs.map(async (img) => {
+        if ((img as any).decode) {
+          try { await (img as any).decode(); } catch { }
+        }
+      })
+    );
+
+    forceGradeSize(clone, gw, gh);
+
+    // 6) делаем канвас с прозрачным фоном вокруг
+    const canvas = await html2canvas(clone, {
+      backgroundColor: null,
+      scale,
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      imageTimeout: 15000,
+    });
+
+    // --- RESTORE SVG AFTER SCREENSHOT ---
+    gradeImgs.forEach((img) => {
+      const orig = img.dataset.svgSrc;
+      if (orig) {
+        img.src = orig;
+        delete img.dataset.svgSrc;
+      }
+    });
+
+    // 7) чистим студию
+    wrap.remove();
+
+    // 8) сохраняем
+    const blob: Blob | null = await new Promise((res) =>
+      canvas.toBlob((b) => res(b), "image/png")
+    );
+    if (!blob) return;
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `osu-count-modal-${stamp}.png`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function openProfiles() {
+    setProfilesClosing(false);
+    setProfilesOpen(true);
+  }
+
+  function closeProfiles() {
+    setProfilesClosing(true);
+
+    // ВАЖНО: время должно совпадать с CSS (я дам 160ms)
+    window.setTimeout(() => {
+      setProfilesOpen(false);
+      setProfilesClosing(false);
+    }, 160);
   }
 
   async function onCreate() {
@@ -408,6 +725,83 @@ export default function App() {
     );
   }
 
+  function StatTile(props: {
+    label: string;
+    value: number | null;
+    base?: number | null;
+
+    kind?: "int" | "pct" | "rank";
+    showDiff?: boolean;
+  }) {
+    const { label, value, base = null, kind = "int", showDiff = false } = props;
+
+    const canDiff = showDiff && base != null && value != null;
+
+    // 1) честная дельта (то что показываем цифрами)
+    const rawDelta = canDiff ? value - base : null;
+
+    // 2) дельта для цвета/стрелки (для rank инвертируем)
+    const uiDelta =
+      kind === "rank" && rawDelta != null ? -rawDelta : rawDelta;
+
+    const cls = canDiff ? diffClass(uiDelta) : "";
+    const arrow = canDiff ? diffArrow(uiDelta) : "";
+
+    // цифра дельты: всегда от rawDelta (без инверта!)
+    const delta =
+      kind === "pct" ? fmtSignedPct(rawDelta) : fmtSignedInt(rawDelta);
+    const main =
+      kind === "pct"
+        ? fmtPct(value)
+        : kind === "rank"
+          ? `#${fmtInt(value)}`
+          : fmtInt(value);
+
+    return (
+      <div className="stat">
+        <div className="k">{label}</div>
+
+        <div className={["v", cls].join(" ")}>
+          {main}
+          {canDiff ? (
+            <span className="diffMark">
+              {arrow} {delta}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  function GradeChip(props: {
+    img: string;
+    alt: string;
+    value: number | null;
+    base?: number | null;
+    showDiff?: boolean;
+    gradeKey: "ssh" | "ss" | "sh" | "s" | "a";
+  }) {
+    const { img, alt, value, base = null, showDiff = false, gradeKey } = props;
+
+    const v = value ?? 0;
+    const canDiff = showDiff;
+    const d = canDiff ? v - (base ?? 0) : null;
+
+    return (
+      <div className="grade">
+        <img className="gradeImg" data-grade={gradeKey} src={img} alt={alt} />
+        <div className={["gradeNum", canDiff ? diffClass(d) : ""].join(" ")}>
+          {v}
+          {canDiff ? (
+            <span className="diffMark">
+              {diffArrow(d)} {fmtSignedInt(d)}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <div className="topbar">
@@ -458,7 +852,7 @@ export default function App() {
             <button
               className="gearBtn"
               type="button"
-              onClick={() => setProfilesOpen(true)}
+              onClick={openProfiles}
               aria-label="Profiles"
               title="Profiles"
             >
@@ -467,6 +861,28 @@ export default function App() {
                 <i />
                 <i />
               </span>
+            </button>
+          </div>
+
+          <div className="changesSwitch">
+            <span className={`modeLabel ${showChanges ? "on" : ""}`}>comparison</span>
+            <button
+              className={`iosSwitch ${showChanges ? "on" : ""}`}
+              onClick={() => {
+                setShowChanges((v) => {
+                  const next = !v;
+                  // при выключении сбрасываем выбор
+                  if (!next) {
+                    setSourceId(null);
+                    setResultId(null);
+                  }
+                  return next;
+                });
+              }}
+              type="button"
+              aria-label="Show changes"
+            >
+              <span className="knob" />
             </button>
           </div>
 
@@ -494,7 +910,7 @@ export default function App() {
 
       <div className="content">
         <div className="list">
-          <div className="listHeader">Reports ({mode})</div>
+          <div className="listHeader">Reports ({fmtMode(mode)})</div>
 
           <div className="listBody">
             <div className="listBodyScroll">
@@ -503,14 +919,49 @@ export default function App() {
               {visibleReports.map((r) => (
                 <button
                   key={r.id}
-                  className={`row ${r.id === selectedId ? "active" : ""}`}
-                  onClick={() => setSelectedId(r.id)}
+                  className={[
+                    "row",
+                    !showChanges && r.id === selectedId ? "active" : "",
+                    showChanges && r.id === sourceId ? "activeSource" : "",
+                    showChanges && r.id === resultId ? "activeResult" : "",
+                  ].join(" ")}
+                  onClick={() => {
+                    if (!showChanges) {
+                      setSelectedId(r.id);
+                      return;
+                    }
+
+                    // режим сравнения
+                    if (!sourceId || (sourceId && resultId)) {
+                      // начинаем новый выбор
+                      setSourceId(r.id);
+                      setResultId(null);
+                      return;
+                    }
+
+                    // source уже выбран, выбираем result
+                    if (r.id === sourceId) return; // не даём выбрать тот же
+                    setResultId(r.id);
+                  }}
                   type="button"
                 >
                   <div className="rowMain">
                     <img className="rowAvatar" src={r.avatarUrl} alt="" />
                     <div className="rowText">
-                      <div className="rowTitle">{r.title}</div>
+                      <div className="rowTitle">
+                        <span className="rowTitleText">{r.title}</span>
+
+                        <span className="rowTitleBadges">
+                          {showChanges && r.id === sourceId ? (
+                            <span className="badge source">BEFORE</span>
+                          ) : null}
+
+                          {showChanges && r.id === resultId ? (
+                            <span className="badge result">AFTER</span>
+                          ) : null}
+                        </span>
+                      </div>
+
                       <div className="rowMeta">{fmtDate(r.createdAt)}</div>
                     </div>
                   </div>
@@ -524,216 +975,356 @@ export default function App() {
           <div className="previewHeader">Preview</div>
 
           <div className="previewBody">
-            {!selected ? (
-              <div className="previewEmpty">Select a report on the left</div>
-            ) : (
-              <div className="card">
-                <div className="cardTop">
-                  <div className="cardTopLeft">
-                    <div>
-                      <div className="cardTitle">{selected.title}</div>
-                      <div className="cardSub">{fmtDate(selected.createdAt)}</div>
+            <div className="card">
+              {!selected ? (
+                <div className="previewEmpty">
+                  {showChanges
+                    ? !source
+                      ? "Pick SOURCE report on the left"
+                      : !resultId
+                        ? "Pick RESULT report on the left"
+                        : "Pick RESULT report on the left"
+                    : "Select a report on the left"}
+                </div>
+              ) : (
+                <>
+                  <div className="cardTop">
+                    <div className="cardTopLeft">
+                      <div>
+                        <div className="cardTitle">{selected.title}</div>
+                        <div className="cardSub">
+                          {fmtDate(selected.createdAt)} · {fmtMode(selected.mode)}
+                        </div>
+                      </div>
                     </div>
+                    <div className="cardTopMid">
+                      {showChanges ? (() => {
+                        const txt = progressText(source?.createdAt, selected?.createdAt);
+                        return txt ? <div className="progressChip">{txt}</div> : null;
+                      })() : null}
+                    </div>
+
+
+                    <button className="btn ghost" onClick={() => setOpenId(selected.id)}>
+                      Open
+                    </button>
                   </div>
 
-                  <button className="btn ghost" onClick={() => setOpenId(selected.id)}>
-                    Open
-                  </button>
+                  <div className="grid">
+                    <StatTile
+                      label="World rank"
+                      kind="rank"
+                      value={selected.stats.globalRank}
+                      base={source?.stats.globalRank ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+                    <StatTile
+                      label="Country rank"
+                      kind="rank"
+                      value={selected.stats.countryRank}
+                      base={source?.stats.countryRank ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+
+                    <StatTile
+                      label="PP"
+                      value={selected.stats.pp}
+                      base={source?.stats.pp ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+                    <StatTile
+                      label="Accuracy"
+                      kind="pct"
+                      value={selected.stats.accuracy}
+                      base={source?.stats.accuracy ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+
+                    <StatTile
+                      label="Playcount"
+                      value={selected.stats.playcount}
+                      base={source?.stats.playcount ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+                    <StatTile
+                      label="Ranked score"
+                      value={selected.stats.rankedScore}
+                      base={source?.stats.rankedScore ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+                    <StatTile
+                      label="Total score"
+                      value={selected.stats.totalScore}
+                      base={source?.stats.totalScore ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+                    <StatTile
+                      label="Total hits"
+                      value={selected.stats.totalHits}
+                      base={source?.stats.totalHits ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+                    <StatTile
+                      label="Max combo"
+                      value={selected.stats.maximumCombo}
+                      base={source?.stats.maximumCombo ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+                    <StatTile
+                      label="Replays watched"
+                      value={selected.stats.replaysWatchedByOthers}
+                      base={source?.stats.replaysWatchedByOthers ?? null}
+                      showDiff={!!(showChanges && source && resultId)}
+                    />
+
+                    <div className="stat wide">
+                      <div className="k">Grades</div>
+
+                      <div className="grades">
+                        <GradeChip
+                          gradeKey="ssh"
+                          img={gradeSSSilver}
+                          alt="SS Silver"
+                          value={selected.stats.grades.ssh}
+                          base={source?.stats.grades.ssh ?? null}
+                          showDiff={!!(showChanges && source && resultId)}
+                        />
+
+                        <GradeChip
+                          gradeKey="ss"
+                          img={gradeSS}
+                          alt="SS"
+                          value={selected.stats.grades.ss}
+                          base={source?.stats.grades.ss ?? null}
+                          showDiff={!!(showChanges && source && resultId)}
+                        />
+
+                        <GradeChip
+                          gradeKey="sh"
+                          img={gradeSSilver}
+                          alt="S Silver"
+                          value={selected.stats.grades.sh}
+                          base={source?.stats.grades.sh ?? null}
+                          showDiff={!!(showChanges && source && resultId)}
+                        />
+
+                        <GradeChip
+                          gradeKey="s"
+                          img={gradeS}
+                          alt="S"
+                          value={selected.stats.grades.s}
+                          base={source?.stats.grades.s ?? null}
+                          showDiff={!!(showChanges && source && resultId)}
+                        />
+
+                        <GradeChip
+                          gradeKey="a"
+                          img={gradeA}
+                          alt="A"
+                          value={selected.stats.grades.a}
+                          base={source?.stats.grades.a ?? null}
+                          showDiff={!!(showChanges && source && resultId)}
+                        />
+                      </div>
+                    </div>
+
+                    {(selected?.bestScores?.length ?? 0) > 0 && (
+                      <div className="stat wide">
+                        <ScoresBlock title="Best results" items={selected.bestScores} />
+                      </div>
+                    )}
+
+                    {(selected?.firstScores?.length ?? 0) > 0 && (
+                      <div className="stat wide">
+                        <ScoresBlock title="First places" items={selected.firstScores} />
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {openId && openReport && (
+        <div className="modalBackdrop" onClick={() => setOpenId(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div ref={modalRef} className="modalContent">
+              {/* ====== ВОТ ТУТ ОН, НОРМАЛЬНЫЙ КОНТЕНТ МОДАЛКИ КАК БЫЛО ====== */}
+              <div className="modalHeader">
+                <div className="modalHeaderLeft">
+                  <img className="modalAvatar" src={openReport.avatarUrl} alt="" />
+                  <div>
+                    <div className="modalTitle">{openReport.title}</div>
+                    <div className="modalSub">
+                      {fmtDate(openReport.createdAt)} · {fmtMode(openReport.mode)}
+                    </div>
+                  </div>
+                </div>
+                <div className="modalHeaderMid">
+                  {showChanges ? (() => {
+                    const txt = progressText(source?.createdAt, openReport?.createdAt);
+                    return txt ? <div className="progressChip">{txt}</div> : null;
+                  })() : null}
+                </div>
+                <button className="btn ghost" onClick={() => setOpenId(null)}>
+                  Close
+                </button>
+              </div>
+
+              <div className="modalBody">
+                <div className="hero">
+                  {/* WORLD */}
+                  <div className="heroItem">
+                    <div className="heroK">World rank</div>
+
+                    {(() => {
+                      const can = showModalDiffs && source?.stats.globalRank != null && openReport.stats.globalRank != null;
+                      const raw = can ? openReport.stats.globalRank! - source!.stats.globalRank! : null;
+
+                      // rank: меньше = лучше, значит для цвета/стрелки инверт
+                      const ui = raw != null ? -raw : null;
+
+                      const cls = can ? diffClass(ui) : "";
+                      const arrow = can ? diffArrow(ui) : "";
+                      const deltaTxt = can ? fmtSignedInt(raw) : "";
+
+                      return (
+                        <div className={["heroV", cls].join(" ")}>
+                          #{fmtInt(openReport.stats.globalRank)}
+                          {can ? <span className="diffMark">{arrow} {deltaTxt}</span> : null}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* COUNTRY */}
+                  <div className="heroItem">
+                    <div className="heroK">Country rank</div>
+
+                    {(() => {
+                      const can = showModalDiffs && source?.stats.countryRank != null && openReport.stats.countryRank != null;
+                      const raw = can ? openReport.stats.countryRank! - source!.stats.countryRank! : null;
+
+                      const ui = raw != null ? -raw : null;
+
+                      const cls = can ? diffClass(ui) : "";
+                      const arrow = can ? diffArrow(ui) : "";
+                      const deltaTxt = can ? fmtSignedInt(raw) : "";
+
+                      return (
+                        <div className={["heroV", cls].join(" ")}>
+                          #{fmtInt(openReport.stats.countryRank)}
+                          {can ? <span className="diffMark">{arrow} {deltaTxt}</span> : null}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 <div className="grid">
-                  <div className="stat">
-                    <div className="k">World rank</div>
-                    <div className="v">#{fmtInt(selected.stats.globalRank)}</div>
-                  </div>
-                  <div className="stat">
-                    <div className="k">Country rank</div>
-                    <div className="v">#{fmtInt(selected.stats.countryRank)}</div>
-                  </div>
+                  <StatTile
+                    label="PP"
+                    value={openReport.stats.pp}
+                    base={source?.stats.pp ?? null}
+                    showDiff={showModalDiffs}
+                  />
+                  <StatTile
+                    label="Accuracy"
+                    kind="pct"
+                    value={openReport.stats.accuracy}
+                    base={source?.stats.accuracy ?? null}
+                    showDiff={showModalDiffs}
+                  />
 
-                  <div className="stat">
-                    <div className="k">PP</div>
-                    <div className="v">{fmtInt(selected.stats.pp)}</div>
-                  </div>
-                  <div className="stat">
-                    <div className="k">Accuracy</div>
-                    <div className="v">{fmtPct(selected.stats.accuracy)}</div>
-                  </div>
+                  <StatTile
+                    label="Playcount"
+                    value={openReport.stats.playcount}
+                    base={source?.stats.playcount ?? null}
+                    showDiff={showModalDiffs}
+                  />
+                  <StatTile
+                    label="Ranked score"
+                    value={openReport.stats.rankedScore}
+                    base={source?.stats.rankedScore ?? null}
+                    showDiff={showModalDiffs}
+                  />
 
-                  <div className="stat">
-                    <div className="k">Playcount</div>
-                    <div className="v">{fmtInt(selected.stats.playcount)}</div>
-                  </div>
-                  <div className="stat">
-                    <div className="k">Total score</div>
-                    <div className="v">{fmtInt(selected.stats.totalScore)}</div>
-                  </div>
+                  <StatTile
+                    label="Total score"
+                    value={openReport.stats.totalScore}
+                    base={source?.stats.totalScore ?? null}
+                    showDiff={showModalDiffs}
+                  />
+                  <StatTile
+                    label="Total hits"
+                    value={openReport.stats.totalHits}
+                    base={source?.stats.totalHits ?? null}
+                    showDiff={showModalDiffs}
+                  />
 
-                  <div className="stat">
-                    <div className="k">Total hits</div>
-                    <div className="v">{fmtInt(selected.stats.totalHits)}</div>
-                  </div>
-                  <div className="stat">
-                    <div className="k">Max combo</div>
-                    <div className="v">{fmtInt(selected.stats.maximumCombo)}</div>
-                  </div>
+                  <StatTile
+                    label="Max combo"
+                    value={openReport.stats.maximumCombo}
+                    base={source?.stats.maximumCombo ?? null}
+                    showDiff={showModalDiffs}
+                  />
+                  <StatTile
+                    label="Replays watched"
+                    value={openReport.stats.replaysWatchedByOthers}
+                    base={source?.stats.replaysWatchedByOthers ?? null}
+                    showDiff={showModalDiffs}
+                  />
 
                   <div className="stat wide">
                     <div className="k">Grades</div>
 
                     <div className="grades">
-                      <div className="grade">
-                        <img
-                          className="gradeImg"
-                          src="https://osu.ppy.sh/assets/images/GradeSmall-SS-Silver.6681366c.svg"
-                          alt="SS Silver"
-                        />
-                        <div className="gradeNum">{selected.stats.grades.ssh ?? 0}</div>
-                      </div>
+                      <GradeChip
+                        gradeKey="ssh"
+                        img={gradeSSSilver}
+                        alt="SS Silver"
+                        value={openReport.stats.grades.ssh}
+                        base={source?.stats.grades.ssh ?? null}
+                        showDiff={showModalDiffs}
+                      />
 
-                      <div className="grade">
-                        <img
-                          className="gradeImg"
-                          src="https://osu.ppy.sh/assets/images/GradeSmall-SS.a21de890.svg"
-                          alt="SS"
-                        />
-                        <div className="gradeNum">{selected.stats.grades.ss ?? 0}</div>
-                      </div>
+                      <GradeChip
+                        gradeKey="ss"
+                        img={gradeSS}
+                        alt="SS"
+                        value={openReport.stats.grades.ss}
+                        base={source?.stats.grades.ss ?? null}
+                        showDiff={showModalDiffs}
+                      />
 
-                      <div className="grade">
-                        <img
-                          className="gradeImg"
-                          src="https://osu.ppy.sh/assets/images/GradeSmall-S-Silver.811ae28c.svg"
-                          alt="S Silver"
-                        />
-                        <div className="gradeNum">{selected.stats.grades.sh ?? 0}</div>
-                      </div>
+                      <GradeChip
+                        gradeKey="sh"
+                        img={gradeSSilver}
+                        alt="S Silver"
+                        value={openReport.stats.grades.sh}
+                        base={source?.stats.grades.sh ?? null}
+                        showDiff={showModalDiffs}
+                      />
 
-                      <div className="grade">
-                        <img
-                          className="gradeImg"
-                          src="https://osu.ppy.sh/assets/images/GradeSmall-S.3b4498a9.svg"
-                          alt="S"
-                        />
-                        <div className="gradeNum">{selected.stats.grades.s ?? 0}</div>
-                      </div>
+                      <GradeChip
+                        gradeKey="s"
+                        img={gradeS}
+                        alt="S"
+                        value={openReport.stats.grades.s}
+                        base={source?.stats.grades.s ?? null}
+                        showDiff={showModalDiffs}
+                      />
 
-                      <div className="grade">
-                        <img
-                          className="gradeImg"
-                          src="https://osu.ppy.sh/assets/images/GradeSmall-A.d785e824.svg"
-                          alt="A"
-                        />
-                        <div className="gradeNum">{selected.stats.grades.a ?? 0}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* NEW: scores blocks */}
-                  {/* NEW: scores blocks */}
-                  {(selected?.bestScores?.length ?? 0) > 0 && (
-                    <div className="stat wide">
-                      <ScoresBlock title="Best results" items={selected.bestScores} />
-                    </div>
-                  )}
-
-                  {(selected?.firstScores?.length ?? 0) > 0 && (
-                    <div className="stat wide">
-                      <ScoresBlock title="First places" items={selected.firstScores} />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {openId && selected && (
-        <div className="modalBackdrop" onClick={() => setOpenId(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modalHeader">
-              <div className="modalHeaderLeft">
-                <img className="modalAvatar" src={selected.avatarUrl} alt="" />
-                <div>
-                  <div className="modalTitle">{selected.title}</div>
-                  <div className="modalSub">
-                    {fmtDate(selected.createdAt)} � {selected.mode}
-                  </div>
-                </div>
-              </div>
-              <button className="btn ghost" onClick={() => setOpenId(null)}>
-                Close
-              </button>
-            </div>
-
-            <div className="modalBody">
-              <div className="hero">
-                <div className="heroItem">
-                  <div className="heroK">World rank</div>
-                  <div className="heroV">#{fmtInt(selected.stats.globalRank)}</div>
-                </div>
-                <div className="heroItem">
-                  <div className="heroK">Country rank</div>
-                  <div className="heroV">#{fmtInt(selected.stats.countryRank)}</div>
-                </div>
-              </div>
-
-              <div className="grid">
-                <div className="stat">
-                  <div className="k">PP</div>
-                  <div className="v">{fmtInt(selected.stats.pp)}</div>
-                </div>
-                <div className="stat">
-                  <div className="k">Accuracy</div>
-                  <div className="v">{fmtPct(selected.stats.accuracy)}</div>
-                </div>
-
-                <div className="stat">
-                  <div className="k">Playcount</div>
-                  <div className="v">{fmtInt(selected.stats.playcount)}</div>
-                </div>
-                <div className="stat">
-                  <div className="k">Total score</div>
-                  <div className="v">{fmtInt(selected.stats.totalScore)}</div>
-                </div>
-
-                <div className="stat">
-                  <div className="k">Total hits</div>
-                  <div className="v">{fmtInt(selected.stats.totalHits)}</div>
-                </div>
-                <div className="stat">
-                  <div className="k">Max combo</div>
-                  <div className="v">{fmtInt(selected.stats.maximumCombo)}</div>
-                </div>
-
-                <div className="stat wide">
-                  <div className="k">Grades</div>
-
-                  <div className="grades">
-                    <div className="grade">
-                      <img className="gradeImg" src="https://osu.ppy.sh/assets/images/GradeSmall-SS-Silver.6681366c.svg" alt="SS Silver" />
-                      <div className="gradeNum">{selected.stats.grades.ssh ?? 0}</div>
-                    </div>
-
-                    <div className="grade">
-                      <img className="gradeImg" src="https://osu.ppy.sh/assets/images/GradeSmall-SS.a21de890.svg" alt="SS" />
-                      <div className="gradeNum">{selected.stats.grades.ss ?? 0}</div>
-                    </div>
-
-                    <div className="grade">
-                      <img className="gradeImg" src="https://osu.ppy.sh/assets/images/GradeSmall-S-Silver.811ae28c.svg" alt="S Silver" />
-                      <div className="gradeNum">{selected.stats.grades.sh ?? 0}</div>
-                    </div>
-
-                    <div className="grade">
-                      <img className="gradeImg" src="https://osu.ppy.sh/assets/images/GradeSmall-S.3b4498a9.svg" alt="S" />
-                      <div className="gradeNum">{selected.stats.grades.s ?? 0}</div>
-                    </div>
-
-                    <div className="grade">
-                      <img className="gradeImg" src="https://osu.ppy.sh/assets/images/GradeSmall-A.d785e824.svg" alt="A" />
-                      <div className="gradeNum">{selected.stats.grades.a ?? 0}</div>
+                      <GradeChip
+                        gradeKey="a"
+                        img={gradeA}
+                        alt="A"
+                        value={openReport.stats.grades.a}
+                        base={source?.stats.grades.a ?? null}
+                        showDiff={showModalDiffs}
+                      />
                     </div>
                   </div>
                 </div>
@@ -746,11 +1337,17 @@ export default function App() {
       {loading && <div className="loading">Loading stats from osu�</div>}
 
       {profilesOpen && (
-        <div className="overlay" onMouseDown={() => setProfilesOpen(false)}>
-          <div className="profilesModal" onMouseDown={(e) => e.stopPropagation()}>
+        <div
+          className={["overlay", profilesClosing ? "closing" : ""].join(" ")}
+          onMouseDown={closeProfiles}
+        >
+          <div
+            className={["profilesModal", profilesClosing ? "closing" : ""].join(" ")}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <div className="profilesHeader">
               <div className="profilesTitle">Profiles</div>
-              <button className="btn ghost" type="button" onClick={() => setProfilesOpen(false)}>
+              <button className="btn ghost" type="button" onClick={closeProfiles}>
                 Close
               </button>
             </div>
@@ -792,6 +1389,59 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* ======= КНОПКА КАМЕРЫ (GLOBAL) ======= */}
+      {openId && openReport && (
+        <button
+          className="shotBtnGlobal"
+          type="button"
+          onClick={() => setShotAskOpen(true)}
+          aria-label="Save screenshot"
+          title="Save screenshot"
+        >
+          <span className="shotIcon" />
+        </button>
+      )}
+
+      {/* ====== CONFIRM (GLOBAL) ====== */}
+      {shotAskOpen && openId && openReport && (
+        <div
+          className="confirmBackdropGlobal"
+          data-html2canvas-ignore="true"
+          onMouseDown={() => setShotAskOpen(false)}
+        >
+          <div
+            className="confirmModal"
+            onMouseDown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="confirmTitle">Save screenshot? 🤔</div>
+            <div className="confirmSub">Do you want to save this result?</div>
+
+            <div className="confirmActions">
+              <button className="btn ghost" type="button" onClick={() => setShotAskOpen(false)}>
+                No
+              </button>
+
+              <button
+                className="btn primary"
+                type="button"
+                onClick={() => {
+                  setShotAskOpen(false);
+                  requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                      doModalScreenshot().catch(console.error);
+                    });
+                  });
+                }}
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+
   );
 }
