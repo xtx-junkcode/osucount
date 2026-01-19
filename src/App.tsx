@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import "./app.css";
+import "./App.css";
 // SVG — для обычного UI
 import gradeSSSilver from "./assets/grades/ss_silver.svg";
 import gradeSS from "./assets/grades/ss.svg";
