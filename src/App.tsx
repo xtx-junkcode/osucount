@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-// SVG — для обычного UI
+
+// SVG — for UI
 import gradeSSSilver from "./assets/grades/ss_silver.svg";
 import gradeSS from "./assets/grades/ss.svg";
-import gradeSSilver from "./assets/grades/s_silver.svg";
+import gradeSSilverS from "./assets/grades/s_silver.svg";
 import gradeS from "./assets/grades/s.svg";
 import gradeA from "./assets/grades/a.svg";
 
-// PNG — ТОЛЬКО для скриншота
-// PNG — ТОЛЬКО для скриншота
+// PNG — ONLY for screenshot
 import gradeSSSilverPng from "./assets/grades/ss_silver.png";
 import gradeSSPng from "./assets/grades/ss.png";
-import gradeSSilverPng from "./assets/grades/s_silver.png";
+import gradeSSilverSPng from "./assets/grades/s_silver.png";
 import gradeSPng from "./assets/grades/s.png";
 import gradeAPng from "./assets/grades/a.png";
+
 import { webApi } from "./webApi";
 import html2canvas from "html2canvas";
-
 
 type ScoreItem = {
   artist: string;
@@ -26,7 +26,7 @@ type ScoreItem = {
   accuracy: number | null;
   pp: number | null;
 
-  mods?: string[]; // ? NEW
+  mods?: string[];
 
   beatmapUrl: string;
   beatmapId: number | null;
@@ -60,18 +60,18 @@ type Report = {
 };
 
 function fmtInt(n: number | null) {
-  if (n === null || n === undefined) return "�";
-  return new Intl.NumberFormat("ru-RU").format(n);
+  if (n === null || n === undefined) return "—";
+  return new Intl.NumberFormat("en-US").format(n);
 }
 function fmtPct(n: number | null) {
-  if (n === null || n === undefined) return "�";
+  if (n === null || n === undefined) return "—";
   return `${n.toFixed(2)}%`;
 }
 
 function fmtSignedInt(n: number | null) {
   if (n == null) return "—";
   const sign = n > 0 ? "+" : "";
-  return sign + new Intl.NumberFormat("ru-RU").format(Math.round(n));
+  return sign + new Intl.NumberFormat("en-US").format(Math.round(n));
 }
 
 function fmtSignedPct(n: number | null) {
@@ -114,7 +114,7 @@ function fmtDiffDaysHours(fromIso: string, toIso: string) {
   const to = new Date(toIso).getTime();
 
   const diffMs = Math.abs(to - from);
-  const totalHours = Math.floor(diffMs / 36e5); // 36e5 = 60*60*1000
+  const totalHours = Math.floor(diffMs / 36e5);
 
   const days = Math.floor(totalHours / 24);
   const hours = totalHours % 24;
@@ -133,7 +133,6 @@ function progressText(fromIso?: string | null, toIso?: string | null) {
   const from = new Date(fromIso).getTime();
   const to = new Date(toIso).getTime();
 
-  // если RESULT старее SOURCE (сравнение "назад") — не "progress"
   if (to < from) return "That’s the difference :)";
 
   const span = fmtDiffDaysHours(fromIso, toIso);
@@ -141,7 +140,7 @@ function progressText(fromIso?: string | null, toIso?: string | null) {
 }
 
 function fmtAcc01(n: number | null) {
-  if (n == null) return "�";
+  if (n == null) return "—";
   return `${(n * 100).toFixed(2)}%`;
 }
 function fmtAgo(iso: string | null) {
@@ -171,6 +170,12 @@ type PlayerProfile = {
 
 const api = (window as any).api ?? webApi;
 
+function toIsoFromCreatedAt(v: any) {
+  const n = typeof v === "number" ? v : Number(String(v).replace(/\.0$/, ""));
+  if (!Number.isFinite(n)) return new Date().toISOString();
+  return new Date(n).toISOString();
+}
+
 export default function App() {
   const [mode, setMode] = useState<"mania" | "osu">("mania");
   const [reports, setReports] = useState<Report[]>([]);
@@ -184,12 +189,15 @@ export default function App() {
   const [profilesClosing, setProfilesClosing] = useState(false);
   const [profileLink, setProfileLink] = useState("");
   const [profileError, setProfileError] = useState<string | null>(null);
+
   const [showChanges, setShowChanges] = useState(false);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [resultId, setResultId] = useState<string | null>(null);
+
   const modalRef = useRef<HTMLDivElement | null>(null);
   const [shotAskOpen, setShotAskOpen] = useState(false);
 
+  // ---- REPORTS LOADING (via webApi.listReports -> D1 Worker) ----
   async function refresh(osuUserId?: number | null, m?: "mania" | "osu") {
     if (!osuUserId) {
       setReports([]);
@@ -198,12 +206,9 @@ export default function App() {
 
     const modeQ = m ?? mode;
 
-    // воркер возвращает массив репортов (уже rep, не {report_json: "..."} )
-    const rows = await workerJson(
-      `/api/reports?osuUserId=${encodeURIComponent(String(osuUserId))}&mode=${encodeURIComponent(modeQ)}`
-    );
+    const all = (await api.listReports()) as Report[];
 
-    const list: Report[] = (Array.isArray(rows) ? rows : [])
+    const list: Report[] = (Array.isArray(all) ? all : [])
       .map((rep: any) => {
         const createdAt = rep?.createdAt
           ? String(rep.createdAt).includes("T")
@@ -215,10 +220,12 @@ export default function App() {
           ...rep,
           id: String(rep?.id),
           createdAt,
-          mode: (rep?.mode ?? modeQ) as "osu" | "mania",
-          userId: String(rep?.userId ?? osuUserId),
+          mode: (rep?.mode ?? "mania") as "osu" | "mania",
+          userId: String(rep?.userId ?? rep?.osuUserId ?? ""),
         } as Report;
       })
+      // keep only current selected user & current mode (because listReports returns both modes)
+      .filter((r) => String(r.userId) === String(osuUserId) && (r.mode ?? "mania") === modeQ)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     setReports(list);
@@ -233,8 +240,6 @@ export default function App() {
     (async () => {
       try {
         const state = await api.profilesGet();
-        // state: { profiles: [{id, username, avatarUrl}], selectedId: string|null }
-
         const list = (state?.profiles ?? []).map((p: any) => ({
           id: Number(p.id),
           username: p.username,
@@ -254,9 +259,7 @@ export default function App() {
 
   const visibleReports = useMemo(() => {
     const byMode = reports.filter((r) => (r.mode ?? "mania") === mode);
-
     if (selectedProfileId == null) return [];
-
     const pid = String(selectedProfileId);
     return byMode.filter((r) => String(r.userId) === pid);
   }, [reports, mode, selectedProfileId]);
@@ -280,32 +283,17 @@ export default function App() {
     [visibleReports, resultId]
   );
 
-  // что показываем в превью:
-  // - если showChanges ON -> показываем result
-  // - если OFF -> как раньше selected/open
   const selected = useMemo(() => {
     if (showChanges) return result;
     return visibleReports.find((r) => r.id === (openId ?? selectedId)) ?? null;
   }, [showChanges, result, visibleReports, selectedId, openId]);
 
-  // какой репорт реально открыт в модалке
   const openReport = useMemo(() => {
     if (!openId) return null;
     return visibleReports.find((r) => r.id === openId) ?? null;
   }, [openId, visibleReports]);
 
-  // показывать дельты в модалке только если:
-  // - comparison on
-  // - source выбран
-  // - result выбран
-  // - и открыта именно RESULT (а не SOURCE)
-  const showModalDiffs = !!(
-    showChanges &&
-    source &&
-    resultId &&
-    openReport &&
-    openReport.id === resultId
-  );
+  const showModalDiffs = !!(showChanges && source && resultId && openReport && openReport.id === resultId);
 
   async function onAddProfile() {
     setProfileError(null);
@@ -354,51 +342,15 @@ export default function App() {
     }
   }
 
-  const WORKER_BASE = (import.meta as any).env?.VITE_WORKER_BASE || "";
-  // пример потом: VITE_WORKER_BASE="https://xxx.yyy.workers.dev"
-  const API_BASE = WORKER_BASE ? String(WORKER_BASE).replace(/\/$/, "") : "";
-
-  async function workerJson(path: string, init?: RequestInit) {
-    if (!API_BASE) throw new Error("VITE_WORKER_BASE is empty");
-
-    const resp = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers: {
-        ...(init?.headers ?? {}),
-        "Content-Type": "application/json",
-      },
-    });
-
-    const text = await resp.text().catch(() => "");
-    let data: any = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-
-    if (!resp.ok) {
-      const msg =
-        (data && (data.error || data.message)) ? String(data.error || data.message) :
-          `HTTP ${resp.status}`;
-      throw new Error(msg);
-    }
-
-    return data;
-  }
-
-  function toIsoFromCreatedAt(v: any) {
-    // D1 может вернуть number, string, string с ".0"
-    const n = typeof v === "number" ? v : Number(String(v).replace(/\.0$/, ""));
-    if (!Number.isFinite(n)) return new Date().toISOString();
-    return new Date(n).toISOString();
-  }
-
-  const IMG_PROXY = WORKER_BASE
-    ? `${String(WORKER_BASE).replace(/\/$/, "")}/img?url=`
-    : "/img?url="; // если вдруг воркер на том же домене (редко)
-
+  const IMG_PROXY =
+    (import.meta as any).env?.VITE_WORKER_BASE
+      ? `${String((import.meta as any).env.VITE_WORKER_BASE).replace(/\/$/, "")}/img?url=`
+      : "/img?url=";
 
   const GRADE_PNG_BY_KEY: Record<"ssh" | "ss" | "sh" | "s" | "a", string> = {
     ssh: gradeSSSilverPng,
     ss: gradeSSPng,
-    sh: gradeSSilverPng,
+    sh: gradeSSilverSPng,
     s: gradeSPng,
     a: gradeAPng,
   };
@@ -410,39 +362,28 @@ export default function App() {
     const modal = content.closest(".modal") as HTMLElement | null;
     if (!modal) return;
 
-
-
-    // 1) создаём невидимую "студию"
     const wrap = document.createElement("div");
     wrap.className = "sshotWrap";
     document.body.appendChild(wrap);
 
-    // 2) клонируем модалку целиком (ВАЖНО: не content)
     const clone = modal.cloneNode(true) as HTMLElement;
-
-    // 3) фикс: внутри клона не должно быть анимаций/трансформаций
     clone.style.animation = "none";
     clone.style.transform = "none";
     clone.style.opacity = "1";
-
     wrap.appendChild(clone);
 
-    // --- SWITCH GRADES TO PNG FOR SCREENSHOT (clone only) ---
-    const gradeImgs = Array.from(
-      clone.querySelectorAll("img.gradeImg")
-    ) as HTMLImageElement[];
+    const gradeImgs = Array.from(clone.querySelectorAll("img.gradeImg")) as HTMLImageElement[];
 
     gradeImgs.forEach((img) => {
-      const key = img.getAttribute("data-grade") as ("ssh" | "ss" | "sh" | "s" | "a" | null);
+      const key = img.getAttribute("data-grade") as "ssh" | "ss" | "sh" | "s" | "a" | null;
       if (!key) return;
 
       const png = GRADE_PNG_BY_KEY[key];
       if (!png) return;
 
-      img.dataset.svgSrc = img.src; // запоминаем что было
-      img.src = png;                // ставим png
+      img.dataset.svgSrc = img.src;
+      img.src = png;
     });
-
 
     const liveGrade = modal.querySelector("img.gradeImg") as HTMLImageElement | null;
     const rect = liveGrade?.getBoundingClientRect();
@@ -450,43 +391,38 @@ export default function App() {
     const gw = rect ? Math.round(rect.width) : 46;
     const gh = rect ? Math.round(rect.height) : 23;
 
-    // scale — только качество PNG, не размер элементов
     const scale = Math.max(2, Math.round(window.devicePixelRatio || 2));
 
-
-    function forceGradeSize(root: HTMLElement, gw: number, gh: number) {
+    function forceGradeSize(root: HTMLElement, w: number, h: number) {
       root.querySelectorAll("img.gradeImg").forEach((img) => {
         const el = img as HTMLImageElement;
 
-        // убираем эффекты, которые html2canvas часто корявит
         el.style.filter = "none";
         el.style.transform = "none";
 
-        // фиксируем размер максимально жёстко
-        el.style.width = `${gw}px`;
-        el.style.height = `${gh}px`;
-        el.style.minWidth = `${gw}px`;
-        el.style.minHeight = `${gh}px`;
-        el.style.maxWidth = `${gw}px`;
-        el.style.maxHeight = `${gh}px`;
+        el.style.width = `${w}px`;
+        el.style.height = `${h}px`;
+        el.style.minWidth = `${w}px`;
+        el.style.minHeight = `${h}px`;
+        el.style.maxWidth = `${w}px`;
+        el.style.maxHeight = `${h}px`;
 
         el.style.display = "block";
         el.style.objectFit = "contain";
         el.style.objectPosition = "center";
         el.style.flex = "0 0 auto";
 
-        el.setAttribute("width", String(gw));
-        el.setAttribute("height", String(gh));
+        el.setAttribute("width", String(w));
+        el.setAttribute("height", String(h));
 
-        (el as any).width = gw;
-        (el as any).height = gh;
+        (el as any).width = w;
+        (el as any).height = h;
       });
     }
+
     forceGradeSize(clone, gw, gh);
 
-    // 4) инлайним все <img> в клоне (чтобы CORS/рендер не ломался)
     async function imgToDataURL(url: string) {
-
       const proxied = IMG_PROXY + encodeURIComponent(url);
       const resp = await fetch(proxied, { cache: "no-store" });
       if (!resp.ok) throw new Error(`proxy fetch failed: ${resp.status}`);
@@ -506,7 +442,6 @@ export default function App() {
         const src = img.getAttribute("src") || img.currentSrc || img.src;
         if (!src || src.startsWith("data:")) return;
 
-        // ✅ ЛОКАЛЬНЫЕ КАРТИНКИ НЕ ТРОГАЕМ (Vite assets)
         if (src.includes("/assets/") || src.startsWith("/") || src.startsWith("./") || src.startsWith("../")) {
           return;
         }
@@ -516,23 +451,25 @@ export default function App() {
           const dataUrl = await imgToDataURL(src);
           img.src = dataUrl;
         } catch {
-          // оставляем как есть
+          // ignore
         }
       })
     );
 
-    // 5) ждём декодирование картинок (особенно svg)
     await Promise.all(
       imgs.map(async (img) => {
         if ((img as any).decode) {
-          try { await (img as any).decode(); } catch { }
+          try {
+            await (img as any).decode();
+          } catch {
+            // ignore
+          }
         }
       })
     );
 
     forceGradeSize(clone, gw, gh);
 
-    // 6) делаем канвас с прозрачным фоном вокруг
     const canvas = await html2canvas(clone, {
       backgroundColor: null,
       scale,
@@ -542,7 +479,6 @@ export default function App() {
       imageTimeout: 15000,
     });
 
-    // --- RESTORE SVG AFTER SCREENSHOT ---
     gradeImgs.forEach((img) => {
       const orig = img.dataset.svgSrc;
       if (orig) {
@@ -551,13 +487,9 @@ export default function App() {
       }
     });
 
-    // 7) чистим студию
     wrap.remove();
 
-    // 8) сохраняем
-    const blob: Blob | null = await new Promise((res) =>
-      canvas.toBlob((b) => res(b), "image/png")
-    );
+    const blob: Blob | null = await new Promise((res) => canvas.toBlob((b) => res(b), "image/png"));
     if (!blob) return;
 
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -580,8 +512,6 @@ export default function App() {
 
   function closeProfiles() {
     setProfilesClosing(true);
-
-    // ВАЖНО: время должно совпадать с CSS (я дам 160ms)
     window.setTimeout(() => {
       setProfilesOpen(false);
       setProfilesClosing(false);
@@ -619,9 +549,7 @@ export default function App() {
     if (!ok) return;
 
     await api.deleteReport(selectedId);
-
-    const all = (await api.listReports()) as Report[];
-    setReports(all);
+    await refresh(selectedProfileId, mode);
 
     setSelectedId(null);
     setOpenId(null);
@@ -632,12 +560,9 @@ export default function App() {
     if (!list.length) return null;
 
     const MOD_NAMES: Record<string, string> = {
-      // Difficulty reduction
       EZ: "Easy",
       NF: "No Fail",
       HT: "Half Time",
-
-      // Difficulty increase
       HR: "Hard Rock",
       SD: "Sudden Death",
       PF: "Perfect",
@@ -646,48 +571,33 @@ export default function App() {
       HD: "Hidden",
       FI: "Fade In",
       FL: "Flashlight",
-
-      // Special
-      RL: "Relax",        // �����: RL (� �� RX)   [oai_citation:1�osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      RL: "Relax",
       AP: "Autopilot",
       SO: "Spun Out",
-
-      // Mania special
       MR: "Mirror",
       RD: "Random",
-      CP: "Co-op",        // �����: CP (� �� CO)   [oai_citation:2�osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
-
-      // Other
+      CP: "Co-op",
       TD: "Touch Device",
       AT: "Auto",
-      CM: "Cinema",       // �����: CM (� �� CN)   [oai_citation:3�osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      CM: "Cinema",
       SV2: "ScoreV2",
-      TP: "Target Practice", // legacy/experimental  [oai_citation:4�osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
+      TP: "Target Practice",
     };
 
-    // ������������ ����, ��� ����� ��������� ��� ������
     function normalizeMod(raw: string) {
       let code = String(raw ?? "").trim().toUpperCase();
-
-      // ���� ����� ��������� "K4" -> "4K" (�� ��� ��� � ��������)
       const m = code.match(/^K(\d+)$/);
       if (m) code = `${m[1]}K`;
-
-      // �����: 1K..9K
       if (/^\dK$/.test(code)) return code;
-
-      // ��������� ������ "�����" ������� �� ���������/������ ���:
-      if (code === "RX") code = "RL";   // ������ ����� RX, �� ��� � RL  [oai_citation:5�osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
-      if (code === "CN") code = "CM";   // ������ CN, �� ��� � CM  [oai_citation:6�osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
-      if (code === "CO") code = "CP";   // ������ CO, �� ��� � CP  [oai_citation:7�osu!](https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier)
-
+      if (code === "RX") code = "RL";
+      if (code === "CN") code = "CM";
+      if (code === "CO") code = "CP";
       return code;
     }
 
-    // ��� ��� �������
     function modFullName(code: string) {
-      if (/^\dK$/.test(code)) return `${code[0]} Keys`; // 4K => 4 Keys
-      return MOD_NAMES[code] ?? code; // �������
+      if (/^\dK$/.test(code)) return `${code[0]} Keys`;
+      return MOD_NAMES[code] ?? code;
     }
 
     const rankImg = (rankRaw: string | null) => {
@@ -702,7 +612,6 @@ export default function App() {
         B: "https://osu.ppy.sh/assets/images/GradeSmall-B.e19fc91b.svg",
         C: "https://osu.ppy.sh/assets/images/GradeSmall-C.6bb75adc.svg",
         D: "https://osu.ppy.sh/assets/images/GradeSmall-D.6b170c4c.svg",
-        // F � ��� ������, ����� ������� ������� ����
       };
 
       return map[r] ?? null;
@@ -710,8 +619,7 @@ export default function App() {
 
     const rankLabel = (rankRaw: string | null) => {
       const r = (rankRaw ?? "").toUpperCase();
-      if (!r) return "�";
-      // osu ������ ����� ������ X/XH, �� ������� ��� ����
+      if (!r) return "—";
       return r;
     };
 
@@ -733,11 +641,7 @@ export default function App() {
                 title="Open beatmap"
               >
                 <div className="scoreRank">
-                  {img ? (
-                    <img className="scoreRankImg" src={img} alt={label} />
-                  ) : (
-                    <span className="scoreRankText">{label}</span>
-                  )}
+                  {img ? <img className="scoreRankImg" src={img} alt={label} /> : <span className="scoreRankText">{label}</span>}
                 </div>
 
                 <div className="scoreMain">
@@ -760,12 +664,7 @@ export default function App() {
                           .map((code) => {
                             const full = modFullName(code);
                             return (
-                              <span
-                                key={code}
-                                className="modChip"
-                                data-tip={full}
-                                aria-label={full}
-                              >
+                              <span key={`${code}-${idx}`} className="modChip" data-tip={full} aria-label={full}>
                                 {code}
                               </span>
                             );
@@ -784,7 +683,7 @@ export default function App() {
 
                 <div className="scoreRight">
                   <div className="scoreAcc">{fmtAcc01(s.accuracy)}</div>
-                  <div className="scorePp">{s.pp != null ? `${Math.round(s.pp)}pp` : "�"}</div>
+                  <div className="scorePp">{s.pp != null ? `${Math.round(s.pp)}pp` : "—"}</div>
                 </div>
               </button>
             );
@@ -798,7 +697,6 @@ export default function App() {
     label: string;
     value: number | null;
     base?: number | null;
-
     kind?: "int" | "pct" | "rank";
     showDiff?: boolean;
   }) {
@@ -806,25 +704,15 @@ export default function App() {
 
     const canDiff = showDiff && base != null && value != null;
 
-    // 1) честная дельта (то что показываем цифрами)
     const rawDelta = canDiff ? value - base : null;
-
-    // 2) дельта для цвета/стрелки (для rank инвертируем)
-    const uiDelta =
-      kind === "rank" && rawDelta != null ? -rawDelta : rawDelta;
+    const uiDelta = kind === "rank" && rawDelta != null ? -rawDelta : rawDelta;
 
     const cls = canDiff ? diffClass(uiDelta) : "";
     const arrow = canDiff ? diffArrow(uiDelta) : "";
 
-    // цифра дельты: всегда от rawDelta (без инверта!)
-    const delta =
-      kind === "pct" ? fmtSignedPct(rawDelta) : fmtSignedInt(rawDelta);
+    const delta = kind === "pct" ? fmtSignedPct(rawDelta) : fmtSignedInt(rawDelta);
     const main =
-      kind === "pct"
-        ? fmtPct(value)
-        : kind === "rank"
-          ? `#${fmtInt(value)}`
-          : fmtInt(value);
+      kind === "pct" ? fmtPct(value) : kind === "rank" ? `#${fmtInt(value)}` : fmtInt(value);
 
     return (
       <div className="stat">
@@ -894,7 +782,6 @@ export default function App() {
                   setSelectedProfileId(idNum);
                   setSelectedId(null);
 
-                  // ��������� ����� � main.ts (profiles.json)
                   if (idNum != null) {
                     try {
                       await api.profilesSelect(String(idNum));
@@ -940,7 +827,6 @@ export default function App() {
               onClick={() => {
                 setShowChanges((v) => {
                   const next = !v;
-                  // при выключении сбрасываем выбор
                   if (!next) {
                     setSourceId(null);
                     setResultId(null);
@@ -1000,16 +886,13 @@ export default function App() {
                       return;
                     }
 
-                    // режим сравнения
                     if (!sourceId || (sourceId && resultId)) {
-                      // начинаем новый выбор
                       setSourceId(r.id);
                       setResultId(null);
                       return;
                     }
 
-                    // source уже выбран, выбираем result
-                    if (r.id === sourceId) return; // не даём выбрать тот же
+                    if (r.id === sourceId) return;
                     setResultId(r.id);
                   }}
                   type="button"
@@ -1021,13 +904,8 @@ export default function App() {
                         <span className="rowTitleText">{r.title}</span>
 
                         <span className="rowTitleBadges">
-                          {showChanges && r.id === sourceId ? (
-                            <span className="badge source">BEFORE</span>
-                          ) : null}
-
-                          {showChanges && r.id === resultId ? (
-                            <span className="badge result">AFTER</span>
-                          ) : null}
+                          {showChanges && r.id === sourceId ? <span className="badge source">BEFORE</span> : null}
+                          {showChanges && r.id === resultId ? <span className="badge result">AFTER</span> : null}
                         </span>
                       </div>
 
@@ -1067,12 +945,13 @@ export default function App() {
                       </div>
                     </div>
                     <div className="cardTopMid">
-                      {showChanges ? (() => {
-                        const txt = progressText(source?.createdAt, selected?.createdAt);
-                        return txt ? <div className="progressChip">{txt}</div> : null;
-                      })() : null}
+                      {showChanges
+                        ? (() => {
+                          const txt = progressText(source?.createdAt, selected?.createdAt);
+                          return txt ? <div className="progressChip">{txt}</div> : null;
+                        })()
+                        : null}
                     </div>
-
 
                     <button className="btn ghost" onClick={() => setOpenId(selected.id)}>
                       Open
@@ -1095,12 +974,7 @@ export default function App() {
                       showDiff={!!(showChanges && source && resultId)}
                     />
 
-                    <StatTile
-                      label="PP"
-                      value={selected.stats.pp}
-                      base={source?.stats.pp ?? null}
-                      showDiff={!!(showChanges && source && resultId)}
-                    />
+                    <StatTile label="PP" value={selected.stats.pp} base={source?.stats.pp ?? null} showDiff={!!(showChanges && source && resultId)} />
                     <StatTile
                       label="Accuracy"
                       kind="pct"
@@ -1109,12 +983,7 @@ export default function App() {
                       showDiff={!!(showChanges && source && resultId)}
                     />
 
-                    <StatTile
-                      label="Playcount"
-                      value={selected.stats.playcount}
-                      base={source?.stats.playcount ?? null}
-                      showDiff={!!(showChanges && source && resultId)}
-                    />
+                    <StatTile label="Playcount" value={selected.stats.playcount} base={source?.stats.playcount ?? null} showDiff={!!(showChanges && source && resultId)} />
                     <StatTile
                       label="Ranked score"
                       value={selected.stats.rankedScore}
@@ -1170,7 +1039,7 @@ export default function App() {
 
                         <GradeChip
                           gradeKey="sh"
-                          img={gradeSSilver}
+                          img={gradeSSilverS}
                           alt="S Silver"
                           value={selected.stats.grades.sh}
                           base={source?.stats.grades.sh ?? null}
@@ -1197,17 +1066,17 @@ export default function App() {
                       </div>
                     </div>
 
-                    {(selected?.bestScores?.length ?? 0) > 0 && (
+                    {(selected?.bestScores?.length ?? 0) > 0 ? (
                       <div className="stat wide">
                         <ScoresBlock title="Best results" items={selected.bestScores} />
                       </div>
-                    )}
+                    ) : null}
 
-                    {(selected?.firstScores?.length ?? 0) > 0 && (
+                    {(selected?.firstScores?.length ?? 0) > 0 ? (
                       <div className="stat wide">
                         <ScoresBlock title="First places" items={selected.firstScores} />
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </>
               )}
@@ -1220,7 +1089,6 @@ export default function App() {
         <div className="modalBackdrop" onClick={() => setOpenId(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div ref={modalRef} className="modalContent">
-              {/* ====== ВОТ ТУТ ОН, НОРМАЛЬНЫЙ КОНТЕНТ МОДАЛКИ КАК БЫЛО ====== */}
               <div className="modalHeader">
                 <div className="modalHeaderLeft">
                   <img className="modalAvatar" src={openReport.avatarUrl} alt="" />
@@ -1232,10 +1100,12 @@ export default function App() {
                   </div>
                 </div>
                 <div className="modalHeaderMid">
-                  {showChanges ? (() => {
-                    const txt = progressText(source?.createdAt, openReport?.createdAt);
-                    return txt ? <div className="progressChip">{txt}</div> : null;
-                  })() : null}
+                  {showChanges
+                    ? (() => {
+                      const txt = progressText(source?.createdAt, openReport?.createdAt);
+                      return txt ? <div className="progressChip">{txt}</div> : null;
+                    })()
+                    : null}
                 </div>
                 <button className="btn ghost" onClick={() => setOpenId(null)}>
                   Close
@@ -1244,15 +1114,12 @@ export default function App() {
 
               <div className="modalBody">
                 <div className="hero">
-                  {/* WORLD */}
                   <div className="heroItem">
                     <div className="heroK">World rank</div>
 
                     {(() => {
                       const can = showModalDiffs && source?.stats.globalRank != null && openReport.stats.globalRank != null;
                       const raw = can ? openReport.stats.globalRank! - source!.stats.globalRank! : null;
-
-                      // rank: меньше = лучше, значит для цвета/стрелки инверт
                       const ui = raw != null ? -raw : null;
 
                       const cls = can ? diffClass(ui) : "";
@@ -1268,14 +1135,12 @@ export default function App() {
                     })()}
                   </div>
 
-                  {/* COUNTRY */}
                   <div className="heroItem">
                     <div className="heroK">Country rank</div>
 
                     {(() => {
                       const can = showModalDiffs && source?.stats.countryRank != null && openReport.stats.countryRank != null;
                       const raw = can ? openReport.stats.countryRank! - source!.stats.countryRank! : null;
-
                       const ui = raw != null ? -raw : null;
 
                       const cls = can ? diffClass(ui) : "";
@@ -1293,109 +1158,38 @@ export default function App() {
                 </div>
 
                 <div className="grid">
-                  <StatTile
-                    label="PP"
-                    value={openReport.stats.pp}
-                    base={source?.stats.pp ?? null}
-                    showDiff={showModalDiffs}
-                  />
-                  <StatTile
-                    label="Accuracy"
-                    kind="pct"
-                    value={openReport.stats.accuracy}
-                    base={source?.stats.accuracy ?? null}
-                    showDiff={showModalDiffs}
-                  />
-
-                  <StatTile
-                    label="Playcount"
-                    value={openReport.stats.playcount}
-                    base={source?.stats.playcount ?? null}
-                    showDiff={showModalDiffs}
-                  />
-                  <StatTile
-                    label="Ranked score"
-                    value={openReport.stats.rankedScore}
-                    base={source?.stats.rankedScore ?? null}
-                    showDiff={showModalDiffs}
-                  />
-
-                  <StatTile
-                    label="Total score"
-                    value={openReport.stats.totalScore}
-                    base={source?.stats.totalScore ?? null}
-                    showDiff={showModalDiffs}
-                  />
-                  <StatTile
-                    label="Total hits"
-                    value={openReport.stats.totalHits}
-                    base={source?.stats.totalHits ?? null}
-                    showDiff={showModalDiffs}
-                  />
-
-                  <StatTile
-                    label="Max combo"
-                    value={openReport.stats.maximumCombo}
-                    base={source?.stats.maximumCombo ?? null}
-                    showDiff={showModalDiffs}
-                  />
-                  <StatTile
-                    label="Replays watched"
-                    value={openReport.stats.replaysWatchedByOthers}
-                    base={source?.stats.replaysWatchedByOthers ?? null}
-                    showDiff={showModalDiffs}
-                  />
+                  <StatTile label="PP" value={openReport.stats.pp} base={source?.stats.pp ?? null} showDiff={showModalDiffs} />
+                  <StatTile label="Accuracy" kind="pct" value={openReport.stats.accuracy} base={source?.stats.accuracy ?? null} showDiff={showModalDiffs} />
+                  <StatTile label="Playcount" value={openReport.stats.playcount} base={source?.stats.playcount ?? null} showDiff={showModalDiffs} />
+                  <StatTile label="Ranked score" value={openReport.stats.rankedScore} base={source?.stats.rankedScore ?? null} showDiff={showModalDiffs} />
+                  <StatTile label="Total score" value={openReport.stats.totalScore} base={source?.stats.totalScore ?? null} showDiff={showModalDiffs} />
+                  <StatTile label="Total hits" value={openReport.stats.totalHits} base={source?.stats.totalHits ?? null} showDiff={showModalDiffs} />
+                  <StatTile label="Max combo" value={openReport.stats.maximumCombo} base={source?.stats.maximumCombo ?? null} showDiff={showModalDiffs} />
+                  <StatTile label="Replays watched" value={openReport.stats.replaysWatchedByOthers} base={source?.stats.replaysWatchedByOthers ?? null} showDiff={showModalDiffs} />
 
                   <div className="stat wide">
                     <div className="k">Grades</div>
 
                     <div className="grades">
-                      <GradeChip
-                        gradeKey="ssh"
-                        img={gradeSSSilver}
-                        alt="SS Silver"
-                        value={openReport.stats.grades.ssh}
-                        base={source?.stats.grades.ssh ?? null}
-                        showDiff={showModalDiffs}
-                      />
-
-                      <GradeChip
-                        gradeKey="ss"
-                        img={gradeSS}
-                        alt="SS"
-                        value={openReport.stats.grades.ss}
-                        base={source?.stats.grades.ss ?? null}
-                        showDiff={showModalDiffs}
-                      />
-
-                      <GradeChip
-                        gradeKey="sh"
-                        img={gradeSSilver}
-                        alt="S Silver"
-                        value={openReport.stats.grades.sh}
-                        base={source?.stats.grades.sh ?? null}
-                        showDiff={showModalDiffs}
-                      />
-
-                      <GradeChip
-                        gradeKey="s"
-                        img={gradeS}
-                        alt="S"
-                        value={openReport.stats.grades.s}
-                        base={source?.stats.grades.s ?? null}
-                        showDiff={showModalDiffs}
-                      />
-
-                      <GradeChip
-                        gradeKey="a"
-                        img={gradeA}
-                        alt="A"
-                        value={openReport.stats.grades.a}
-                        base={source?.stats.grades.a ?? null}
-                        showDiff={showModalDiffs}
-                      />
+                      <GradeChip gradeKey="ssh" img={gradeSSSilver} alt="SS Silver" value={openReport.stats.grades.ssh} base={source?.stats.grades.ssh ?? null} showDiff={showModalDiffs} />
+                      <GradeChip gradeKey="ss" img={gradeSS} alt="SS" value={openReport.stats.grades.ss} base={source?.stats.grades.ss ?? null} showDiff={showModalDiffs} />
+                      <GradeChip gradeKey="sh" img={gradeSSilverS} alt="S Silver" value={openReport.stats.grades.sh} base={source?.stats.grades.sh ?? null} showDiff={showModalDiffs} />
+                      <GradeChip gradeKey="s" img={gradeS} alt="S" value={openReport.stats.grades.s} base={source?.stats.grades.s ?? null} showDiff={showModalDiffs} />
+                      <GradeChip gradeKey="a" img={gradeA} alt="A" value={openReport.stats.grades.a} base={source?.stats.grades.a ?? null} showDiff={showModalDiffs} />
                     </div>
                   </div>
+
+                  {(openReport?.bestScores?.length ?? 0) > 0 ? (
+                    <div className="stat wide">
+                      <ScoresBlock title="Best results" items={openReport.bestScores} />
+                    </div>
+                  ) : null}
+
+                  {(openReport?.firstScores?.length ?? 0) > 0 ? (
+                    <div className="stat wide">
+                      <ScoresBlock title="First places" items={openReport.firstScores} />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1403,17 +1197,11 @@ export default function App() {
         </div>
       )}
 
-      {loading && <div className="loading">Loading stats from osu�</div>}
+      {loading && <div className="loading">Loading stats from osu</div>}
 
       {profilesOpen && (
-        <div
-          className={["overlay", profilesClosing ? "closing" : ""].join(" ")}
-          onMouseDown={closeProfiles}
-        >
-          <div
-            className={["profilesModal", profilesClosing ? "closing" : ""].join(" ")}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
+        <div className={["overlay", profilesClosing ? "closing" : ""].join(" ")} onMouseDown={closeProfiles}>
+          <div className={["profilesModal", profilesClosing ? "closing" : ""].join(" ")} onMouseDown={(e) => e.stopPropagation()}>
             <div className="profilesHeader">
               <div className="profilesTitle">Profiles</div>
               <button className="btn ghost" type="button" onClick={closeProfiles}>
@@ -1458,7 +1246,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {/* ======= КНОПКА КАМЕРЫ (GLOBAL) ======= */}
+
       {openId && openReport && (
         <button
           className="shotBtnGlobal"
@@ -1471,20 +1259,10 @@ export default function App() {
         </button>
       )}
 
-      {/* ====== CONFIRM (GLOBAL) ====== */}
       {shotAskOpen && openId && openReport && (
-        <div
-          className="confirmBackdropGlobal"
-          data-html2canvas-ignore="true"
-          onMouseDown={() => setShotAskOpen(false)}
-        >
-          <div
-            className="confirmModal"
-            onMouseDown={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="confirmTitle">Save screenshot? 🤔</div>
+        <div className="confirmBackdropGlobal" data-html2canvas-ignore="true" onMouseDown={() => setShotAskOpen(false)}>
+          <div className="confirmModal" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="confirmTitle">Save screenshot?</div>
             <div className="confirmSub">Do you want to save this result?</div>
 
             <div className="confirmActions">
@@ -1511,6 +1289,5 @@ export default function App() {
         </div>
       )}
     </div>
-
   );
 }
