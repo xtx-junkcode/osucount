@@ -597,17 +597,15 @@ export default function App() {
         return;
       }
 
-      const created = (await api.createReport({
+      const r = (await api.createReport({
         mode,
         userId: String(selectedProfileId),
       })) as Report;
 
-      // перетягиваем список нормально через api.listReports()
-      const all = (await api.listReports()) as Report[];
-      setReports(all);
+      await refresh(selectedProfileId, mode);
 
-      setSelectedId(created.id);
-      setOpenId(created.id);
+      setSelectedId(String(r.id));
+      setOpenId(String(r.id));
     } catch (e: any) {
       alert(e?.message ?? String(e));
     } finally {
