@@ -190,14 +190,58 @@ export default function App() {
   const modalRef = useRef<HTMLDivElement | null>(null);
   const [shotAskOpen, setShotAskOpen] = useState(false);
 
-  async function refresh() {
-    const list = (await api.listReports()) as Report[];
+  async function refresh(osuUserId?: number | null, m?: "mania" | "osu") {
+    // если профиль не выбран — просто пусто
+    if (!osuUserId) {
+      setReports([]);
+      return;
+    }
+
+    const modeQ = m ?? mode;
+
+    // worker отдаёт список, внутри у каждой записи лежит reportJson (полный репорт)
+    const rows = await workerJson(
+      `/api/reports?osuUserId=${encodeURIComponent(String(osuUserId))}&mode=${encodeURIComponent(modeQ)}`
+    );
+
+    const list: Report[] = (Array.isArray(rows) ? rows : [])
+      .map((row: any) => {
+        // ожидаем row.reportJson (или row.report_json) — на всякий случай поддержим оба
+        const raw = row?.reportJson ?? row?.report_json ?? null;
+        let rep: any = null;
+
+        if (raw && typeof raw === "string") {
+          try { rep = JSON.parse(raw); } catch { rep = null; }
+        } else if (raw && typeof raw === "object") {
+          rep = raw;
+        }
+
+        // если вдруг воркер вернул уже готовый объект репорта без reportJson — тоже ок
+        const base = rep && typeof rep === "object" ? rep : row;
+
+        const createdIso =
+          base?.createdAt
+            ? (String(base.createdAt).includes("T") ? String(base.createdAt) : toIsoFromCreatedAt(base.createdAt))
+            : toIsoFromCreatedAt(row?.createdAt);
+
+        return {
+          ...base,
+          id: String(row?.id ?? base?.id ?? crypto.randomUUID()),
+          createdAt: createdIso,
+          mode: (row?.mode ?? base?.mode ?? modeQ) as "osu" | "mania",
+          userId: String(row?.osuUserId ?? row?.osu_user_id ?? base?.userId ?? osuUserId),
+          username: row?.username ?? base?.username ?? "",
+        } as Report;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
     setReports(list);
   }
 
   useEffect(() => {
-    refresh();
-  }, []);
+    refresh(selectedProfileId, mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProfileId, mode]);
 
   useEffect(() => {
     (async () => {
@@ -326,6 +370,39 @@ export default function App() {
 
   const WORKER_BASE = (import.meta as any).env?.VITE_WORKER_BASE || "";
   // пример потом: VITE_WORKER_BASE="https://xxx.yyy.workers.dev"
+  const API_BASE = WORKER_BASE ? String(WORKER_BASE).replace(/\/$/, "") : "";
+
+  async function workerJson(path: string, init?: RequestInit) {
+    if (!API_BASE) throw new Error("VITE_WORKER_BASE is empty");
+
+    const resp = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        "Content-Type": "application/json",
+      },
+    });
+
+    const text = await resp.text().catch(() => "");
+    let data: any = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+    if (!resp.ok) {
+      const msg =
+        (data && (data.error || data.message)) ? String(data.error || data.message) :
+          `HTTP ${resp.status}`;
+      throw new Error(msg);
+    }
+
+    return data;
+  }
+
+  function toIsoFromCreatedAt(v: any) {
+    // D1 может вернуть number, string, string с ".0"
+    const n = typeof v === "number" ? v : Number(String(v).replace(/\.0$/, ""));
+    if (!Number.isFinite(n)) return new Date().toISOString();
+    return new Date(n).toISOString();
+  }
 
   const IMG_PROXY = WORKER_BASE
     ? `${String(WORKER_BASE).replace(/\/$/, "")}/img?url=`
@@ -538,9 +615,29 @@ export default function App() {
         userId: String(selectedProfileId),
       })) as Report;
 
-      await refresh();
-      setSelectedId(r.id);
-      setOpenId(r.id);
+      // 1) сохраняем в D1
+      const saved = await workerJson("/api/report", {
+        method: "POST",
+        body: JSON.stringify({
+          osuUserId: selectedProfileId,
+          username: r.username,
+          mode: r.mode,
+          report: r, // весь объект
+        }),
+      });
+
+      // 2) перезагружаем список из D1 и открываем сохранённый (id теперь из D1)
+      await refresh(selectedProfileId, mode);
+
+      const savedId = saved?.id != null ? String(saved.id) : null;
+      if (savedId) {
+        setSelectedId(savedId);
+        setOpenId(savedId);
+      } else {
+        // если вдруг воркер не вернул id — просто выберем первый
+        setSelectedId(null);
+        setOpenId(null);
+      }
     } catch (e: any) {
       alert(e?.message ?? String(e));
     } finally {
