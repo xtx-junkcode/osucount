@@ -17,18 +17,6 @@ type ScoreItem = {
     createdAt: string | null;
 };
 
-const LS_DEVICE = "osu_count_device_id_v1";
-
-function getDeviceId(): string {
-    let id = "";
-    try { id = localStorage.getItem(LS_DEVICE) || ""; } catch { }
-    if (!id) {
-        id = crypto.randomUUID();
-        try { localStorage.setItem(LS_DEVICE, id); } catch { }
-    }
-    return id;
-}
-
 type Report = {
     id: string;
     createdAt: string;
@@ -62,6 +50,7 @@ type Report = {
 
 const LS_PROFILES = "osu_count_profiles_v1";
 const LS_SELECTED = "osu_count_selected_profile_v1";
+const LS_DEVICE = "osu_count_device_id_v1";
 
 // (оставляю, чтобы ничего не ломать и можно было мигрировать/откатить)
 const LS_REPORTS = "osu_count_reports_v1";
@@ -77,6 +66,19 @@ function load<T>(k: string, fallback: T): T {
 
 function save<T>(k: string, v: T) {
     localStorage.setItem(k, JSON.stringify(v));
+}
+
+function getDeviceId(): string {
+    const cur = load<string | null>(LS_DEVICE, null);
+    if (cur) return cur;
+
+    const id =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `dev_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+    save(LS_DEVICE, id);
+    return id;
 }
 
 function extractUserIdFromUrl(url: string): number | null {
@@ -96,19 +98,12 @@ async function fetchScores(
     type: "best" | "firsts",
     limit = 3
 ) {
-    const r = await fetch(
-        `${API}/api/scores/${userId}/${mode}?type=${type}&limit=${limit}`
-    );
+    const r = await fetch(`${API}/api/scores/${userId}/${mode}?type=${type}&limit=${limit}`);
     if (!r.ok) throw new Error(`Scores fetch failed (${r.status})`);
     return r.json();
 }
 
-function mapReportFromOsu(
-    user: any,
-    mode: Mode,
-    bestScores: any[],
-    firstScores: any[]
-): Report {
+function mapReportFromOsu(user: any, mode: Mode, bestScores: any[], firstScores: any[]): Report {
     const stats = user?.statistics ?? {};
     const grade = stats?.grade_counts ?? {};
     const now = new Date();
@@ -117,10 +112,9 @@ function mapReportFromOsu(
         // ВАЖНО: это локальный id, потом мы заменим на id из D1
         id: String(Date.now()),
         createdAt: now.toISOString(),
-        title: `${user?.username ?? "user"} report ${String(now.getDate()).padStart(
-            2,
-            "0"
-        )}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}`,
+        title: `${user?.username ?? "user"} report ${String(now.getDate()).padStart(2, "0")}.${String(
+            now.getMonth() + 1
+        ).padStart(2, "0")}.${now.getFullYear()}`,
         userId: String(user?.id ?? ""),
         mode,
         username: user?.username ?? "�",
@@ -174,8 +168,10 @@ function toIsoFromAnyTs(x: any): string | null {
 }
 
 async function d1ListReports(osuUserId: number, mode: Mode): Promise<Report[]> {
+    const deviceId = getDeviceId();
+
     const r = await fetch(
-        `${API}/api/reports?osuUserId=${encodeURIComponent(
+        `${API}/api/reports?deviceId=${encodeURIComponent(deviceId)}&osuUserId=${encodeURIComponent(
             String(osuUserId)
         )}&mode=${encodeURIComponent(mode)}`
     );
@@ -183,13 +179,11 @@ async function d1ListReports(osuUserId: number, mode: Mode): Promise<Report[]> {
     const j = await r.json().catch(() => null);
     if (!r.ok) {
         const msg =
-            (j && typeof j === "object" && (j as any).error) ||
-            `Reports fetch failed (${r.status})`;
+            (j && typeof j === "object" && (j as any).error) || `Reports fetch failed (${r.status})`;
         throw new Error(String(msg));
     }
 
     const arr = Array.isArray(j) ? j : [];
-    // нормализуем createdAt
     return arr.map((it: any) => {
         const iso = toIsoFromAnyTs(it?.createdAt) ?? it?.createdAt;
         return {
@@ -208,17 +202,18 @@ async function d1CreateReport(payload: {
     mode: Mode;
     report: any;
 }): Promise<{ id: string; createdAt: string | null }> {
+    const deviceId = getDeviceId();
+
     const r = await fetch(`${API}/api/report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ deviceId, ...payload }),
     });
 
     const j = await r.json().catch(() => null);
     if (!r.ok) {
         const msg =
-            (j && typeof j === "object" && (j as any).error) ||
-            `Save failed (${r.status})`;
+            (j && typeof j === "object" && (j as any).error) || `Save failed (${r.status})`;
         throw new Error(String(msg));
     }
 
@@ -229,15 +224,17 @@ async function d1CreateReport(payload: {
 }
 
 async function d1DeleteReport(id: string): Promise<void> {
-    const r = await fetch(`${API}/api/report/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-    });
+    const deviceId = getDeviceId();
+
+    const r = await fetch(
+        `${API}/api/report/${encodeURIComponent(id)}?deviceId=${encodeURIComponent(deviceId)}`,
+        { method: "DELETE" }
+    );
 
     const j = await r.json().catch(() => null);
     if (!r.ok) {
         const msg =
-            (j && typeof j === "object" && (j as any).error) ||
-            `Delete failed (${r.status})`;
+            (j && typeof j === "object" && (j as any).error) || `Delete failed (${r.status})`;
         throw new Error(String(msg));
     }
 }
@@ -282,13 +279,8 @@ export const webApi = {
         const uid = Number(selectedId);
         if (!Number.isFinite(uid)) return [];
 
-        // тянем оба режима (App дальше всё равно фильтрует по mode + userId)
-        const [mania, osu] = await Promise.all([
-            d1ListReports(uid, "mania"),
-            d1ListReports(uid, "osu"),
-        ]);
+        const [mania, osu] = await Promise.all([d1ListReports(uid, "mania"), d1ListReports(uid, "osu")]);
 
-        // newest first (на всякий)
         const all = [...mania, ...osu];
         all.sort((a, b) => {
             const ta = new Date(a.createdAt).getTime();
@@ -300,10 +292,9 @@ export const webApi = {
     },
 
     async deleteReport(id: string) {
-        // удаляем в D1
         await d1DeleteReport(String(id));
 
-        // и на всякий чистим локальный кеш (если где-то остался старый код/данные)
+        // локальный кеш (на всякий случай)
         try {
             const reports = load<Report[]>(LS_REPORTS, []);
             save(
@@ -326,23 +317,20 @@ export const webApi = {
 
         const reportLocal = mapReportFromOsu(user, mode, best, firsts);
 
-        // сохраняем в D1
         const saved = await d1CreateReport({
             osuUserId: uid,
             username: reportLocal.username,
             mode,
-            report: reportLocal, // целиком
+            report: reportLocal,
         });
 
-        // возвращаем Report с id/createdAt из D1 (чтобы delete работал по правильному id)
         const fixed: Report = {
             ...reportLocal,
             id: String(saved.id),
             createdAt: saved.createdAt ?? reportLocal.createdAt,
         };
 
-        // на всякий — старый локальный LS репортов больше не используем,
-        // но пусть не ломает ничего, если где-то ещё читают LS_REPORTS
+        // локальный кеш (на всякий случай)
         try {
             const reports = load<Report[]>(LS_REPORTS, []);
             save(LS_REPORTS, [fixed, ...reports]);
@@ -353,6 +341,10 @@ export const webApi = {
         return fixed;
     },
 };
+
+// ======================
+// Profiles (D1 via Worker)
+// ======================
 
 async function d1ProfilesGet() {
     const deviceId = getDeviceId();
@@ -375,9 +367,10 @@ async function d1ProfilesAdd(p: { osuUserId: number; username: string; avatarUrl
 
 async function d1ProfilesRemove(osuUserId: number) {
     const deviceId = getDeviceId();
-    const r = await fetch(`${API}/api/profiles/${encodeURIComponent(String(osuUserId))}?deviceId=${encodeURIComponent(deviceId)}`, {
-        method: "DELETE",
-    });
+    const r = await fetch(
+        `${API}/api/profiles/${encodeURIComponent(String(osuUserId))}?deviceId=${encodeURIComponent(deviceId)}`,
+        { method: "DELETE" }
+    );
     const j = await r.json().catch(() => null);
     if (!r.ok) throw new Error(String(j?.error || `Profiles delete failed (${r.status})`));
 }

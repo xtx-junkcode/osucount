@@ -591,22 +591,23 @@ export default function App() {
   async function onCreate() {
     try {
       setLoading(true);
+
       if (selectedProfileId == null) {
         alert("Select profile first");
         return;
       }
 
-      // webApi.createReport УЖЕ сохраняет в D1
-      const r = (await api.createReport({
+      const created = (await api.createReport({
         mode,
         userId: String(selectedProfileId),
       })) as Report;
 
-      // перезагружаем список
-      await refresh(selectedProfileId, mode);
+      // перетягиваем список нормально через api.listReports()
+      const all = (await api.listReports()) as Report[];
+      setReports(all);
 
-      setSelectedId(r.id);
-      setOpenId(r.id);
+      setSelectedId(created.id);
+      setOpenId(created.id);
     } catch (e: any) {
       alert(e?.message ?? String(e));
     } finally {
@@ -618,10 +619,14 @@ export default function App() {
     if (!selectedId) return;
     const ok = confirm("Delete selected report?");
     if (!ok) return;
+
     await api.deleteReport(selectedId);
+
+    const all = (await api.listReports()) as Report[];
+    setReports(all);
+
     setSelectedId(null);
     setOpenId(null);
-    await refresh(selectedProfileId, mode);
   }
 
   function ScoresBlock({ title, items }: { title: string; items?: ScoreItem[] }) {
