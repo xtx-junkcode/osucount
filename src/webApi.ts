@@ -17,6 +17,18 @@ type ScoreItem = {
     createdAt: string | null;
 };
 
+const LS_DEVICE = "osu_count_device_id_v1";
+
+function getDeviceId(): string {
+    let id = "";
+    try { id = localStorage.getItem(LS_DEVICE) || ""; } catch { }
+    if (!id) {
+        id = crypto.randomUUID();
+        try { localStorage.setItem(LS_DEVICE, id); } catch { }
+    }
+    return id;
+}
+
 type Report = {
     id: string;
     createdAt: string;
@@ -233,52 +245,33 @@ async function d1DeleteReport(id: string): Promise<void> {
 export const webApi = {
     // ---- profiles ----
     async profilesGet() {
-        const profiles = load<PlayerProfile[]>(LS_PROFILES, []);
-        const selectedId = load<string | null>(LS_SELECTED, null);
-        return { profiles, selectedId };
+        return await d1ProfilesGet();
     },
 
     async profilesSelect(id: string) {
-        save(LS_SELECTED, id);
-        const profiles = load<PlayerProfile[]>(LS_PROFILES, []);
-        return { profiles, selectedId: id };
+        await d1ProfilesSelect(id ? Number(id) : null);
+        return await d1ProfilesGet();
     },
 
     async profilesAddByUrl(profileUrl: string) {
         const userId = extractUserIdFromUrl(profileUrl);
-        if (!userId)
-            throw new Error("Bad profile link. Need https://osu.ppy.sh/users/<id>");
+        if (!userId) throw new Error("Bad profile link. Need https://osu.ppy.sh/users/<id>");
 
-        // берём mania чтобы всегда был username/avatar (и как у тебя было)
+        // берём mania чтобы всегда был username/avatar
         const user = await fetchUser(userId, "mania");
 
-        const profiles = load<PlayerProfile[]>(LS_PROFILES, []);
-        const next: PlayerProfile = {
-            id: Number(user.id),
+        await d1ProfilesAdd({
+            osuUserId: Number(user.id),
             username: user.username,
             avatarUrl: user.avatar_url,
-        };
+        });
 
-        const merged = [next, ...profiles.filter((p) => p.id !== next.id)];
-        save(LS_PROFILES, merged);
-        save(LS_SELECTED, String(next.id));
-
-        return { profiles: merged, selectedId: String(next.id) };
+        return await d1ProfilesGet();
     },
 
     async profilesRemove(id: string) {
-        const profiles = load<PlayerProfile[]>(LS_PROFILES, []);
-        const filtered = profiles.filter((p) => String(p.id) !== String(id));
-        save(LS_PROFILES, filtered);
-
-        const sel = load<string | null>(LS_SELECTED, null);
-        if (sel === String(id)) {
-            const newSel = filtered[0]?.id ? String(filtered[0].id) : null;
-            save(LS_SELECTED, newSel);
-            return { profiles: filtered, selectedId: newSel };
-        }
-
-        return { profiles: filtered, selectedId: sel };
+        await d1ProfilesRemove(Number(id));
+        return await d1ProfilesGet();
     },
 
     // ---- reports (D1 через Worker) ----
@@ -360,3 +353,43 @@ export const webApi = {
         return fixed;
     },
 };
+
+async function d1ProfilesGet() {
+    const deviceId = getDeviceId();
+    const r = await fetch(`${API}/api/profiles?deviceId=${encodeURIComponent(deviceId)}`);
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw new Error(String(j?.error || `Profiles fetch failed (${r.status})`));
+    return j as { profiles: PlayerProfile[]; selectedId: string | null };
+}
+
+async function d1ProfilesAdd(p: { osuUserId: number; username: string; avatarUrl: string }) {
+    const deviceId = getDeviceId();
+    const r = await fetch(`${API}/api/profiles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId, ...p }),
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw new Error(String(j?.error || `Profiles save failed (${r.status})`));
+}
+
+async function d1ProfilesRemove(osuUserId: number) {
+    const deviceId = getDeviceId();
+    const r = await fetch(`${API}/api/profiles/${encodeURIComponent(String(osuUserId))}?deviceId=${encodeURIComponent(deviceId)}`, {
+        method: "DELETE",
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw new Error(String(j?.error || `Profiles delete failed (${r.status})`));
+}
+
+async function d1ProfilesSelect(osuUserId: number | null) {
+    const deviceId = getDeviceId();
+    const r = await fetch(`${API}/api/profiles/select`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId, osuUserId }),
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw new Error(String(j?.error || `Profiles select failed (${r.status})`));
+    return j as { ok: true; selectedId: string | null };
+}

@@ -191,7 +191,6 @@ export default function App() {
   const [shotAskOpen, setShotAskOpen] = useState(false);
 
   async function refresh(osuUserId?: number | null, m?: "mania" | "osu") {
-    // если профиль не выбран — просто пусто
     if (!osuUserId) {
       setReports([]);
       return;
@@ -199,38 +198,25 @@ export default function App() {
 
     const modeQ = m ?? mode;
 
-    // worker отдаёт список, внутри у каждой записи лежит reportJson (полный репорт)
+    // воркер возвращает массив репортов (уже rep, не {report_json: "..."} )
     const rows = await workerJson(
       `/api/reports?osuUserId=${encodeURIComponent(String(osuUserId))}&mode=${encodeURIComponent(modeQ)}`
     );
 
     const list: Report[] = (Array.isArray(rows) ? rows : [])
-      .map((row: any) => {
-        // ожидаем row.reportJson (или row.report_json) — на всякий случай поддержим оба
-        const raw = row?.reportJson ?? row?.report_json ?? null;
-        let rep: any = null;
-
-        if (raw && typeof raw === "string") {
-          try { rep = JSON.parse(raw); } catch { rep = null; }
-        } else if (raw && typeof raw === "object") {
-          rep = raw;
-        }
-
-        // если вдруг воркер вернул уже готовый объект репорта без reportJson — тоже ок
-        const base = rep && typeof rep === "object" ? rep : row;
-
-        const createdIso =
-          base?.createdAt
-            ? (String(base.createdAt).includes("T") ? String(base.createdAt) : toIsoFromCreatedAt(base.createdAt))
-            : toIsoFromCreatedAt(row?.createdAt);
+      .map((rep: any) => {
+        const createdAt = rep?.createdAt
+          ? String(rep.createdAt).includes("T")
+            ? String(rep.createdAt)
+            : toIsoFromCreatedAt(rep.createdAt)
+          : new Date().toISOString();
 
         return {
-          ...base,
-          id: String(row?.id ?? base?.id ?? crypto.randomUUID()),
-          createdAt: createdIso,
-          mode: (row?.mode ?? base?.mode ?? modeQ) as "osu" | "mania",
-          userId: String(row?.osuUserId ?? row?.osu_user_id ?? base?.userId ?? osuUserId),
-          username: row?.username ?? base?.username ?? "",
+          ...rep,
+          id: String(rep?.id),
+          createdAt,
+          mode: (rep?.mode ?? modeQ) as "osu" | "mania",
+          userId: String(rep?.userId ?? osuUserId),
         } as Report;
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -610,34 +596,17 @@ export default function App() {
         return;
       }
 
+      // webApi.createReport УЖЕ сохраняет в D1
       const r = (await api.createReport({
         mode,
         userId: String(selectedProfileId),
       })) as Report;
 
-      // 1) сохраняем в D1
-      const saved = await workerJson("/api/report", {
-        method: "POST",
-        body: JSON.stringify({
-          osuUserId: selectedProfileId,
-          username: r.username,
-          mode: r.mode,
-          report: r, // весь объект
-        }),
-      });
-
-      // 2) перезагружаем список из D1 и открываем сохранённый (id теперь из D1)
+      // перезагружаем список
       await refresh(selectedProfileId, mode);
 
-      const savedId = saved?.id != null ? String(saved.id) : null;
-      if (savedId) {
-        setSelectedId(savedId);
-        setOpenId(savedId);
-      } else {
-        // если вдруг воркер не вернул id — просто выберем первый
-        setSelectedId(null);
-        setOpenId(null);
-      }
+      setSelectedId(r.id);
+      setOpenId(r.id);
     } catch (e: any) {
       alert(e?.message ?? String(e));
     } finally {
@@ -652,7 +621,7 @@ export default function App() {
     await api.deleteReport(selectedId);
     setSelectedId(null);
     setOpenId(null);
-    await refresh();
+    await refresh(selectedProfileId, mode);
   }
 
   function ScoresBlock({ title, items }: { title: string; items?: ScoreItem[] }) {
