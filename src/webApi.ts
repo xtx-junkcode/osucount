@@ -52,6 +52,9 @@ const LS_PROFILES = "osu_count_profiles_v1";
 const LS_SELECTED = "osu_count_selected_profile_v1";
 const LS_DEVICE = "osu_count_device_id_v1";
 
+void LS_PROFILES;
+void LS_SELECTED;
+
 // (оставляю, чтобы ничего не ломать и можно было мигрировать/откатить)
 const LS_REPORTS = "osu_count_reports_v1";
 
@@ -271,22 +274,25 @@ export const webApi = {
         return await d1ProfilesGet();
     },
 
-    // ---- reports (D1 через Worker) ----
     async listReports() {
-        const selectedId = load<string | null>(LS_SELECTED, null);
+        // selectedId берём из D1 (а не из LS)
+        const state = await d1ProfilesGet(); // { profiles, selectedId } или { ok, profiles, selectedId }
+        const selectedId = (state as any)?.selectedId ?? null;
         if (!selectedId) return [];
 
         const uid = Number(selectedId);
         if (!Number.isFinite(uid)) return [];
 
-        const [mania, osu] = await Promise.all([d1ListReports(uid, "mania"), d1ListReports(uid, "osu")]);
+        const [mania, osu] = await Promise.all([
+            d1ListReports(uid, "mania"),
+            d1ListReports(uid, "osu"),
+        ]);
 
         const all = [...mania, ...osu];
-        all.sort((a, b) => {
-            const ta = new Date(a.createdAt).getTime();
-            const tb = new Date(b.createdAt).getTime();
-            return tb - ta;
-        });
+        all.sort(
+            (a, b) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
 
         return all;
     },

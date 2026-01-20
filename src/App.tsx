@@ -366,6 +366,8 @@ export default function App() {
 
     return data;
   }
+  void workerJson;
+
 
   function toIsoFromCreatedAt(v: any) {
     // D1 может вернуть number, string, string с ".0"
@@ -373,7 +375,7 @@ export default function App() {
     if (!Number.isFinite(n)) return new Date().toISOString();
     return new Date(n).toISOString();
   }
-
+  void toIsoFromCreatedAt;
   const IMG_PROXY = WORKER_BASE
     ? `${String(WORKER_BASE).replace(/\/$/, "")}/img?url=`
     : "/img?url="; // если вдруг воркер на том же домене (редко)
