@@ -2,6 +2,14 @@ type Mode = "osu" | "mania";
 
 const API = "https://lively-bonus-8219.jmvmncpgsw.workers.dev";
 
+async function apiFetch(path: string, init: RequestInit = {}) {
+    const url = path.startsWith("http") ? path : `${API}${path}`;
+    return fetch(url, {
+        ...init,
+        credentials: "include", // ВАЖНО: чтобы слались cookies osu_sess
+    });
+}
+
 type PlayerProfile = { id: number; username: string; avatarUrl: string };
 
 type ScoreItem = {
@@ -96,13 +104,11 @@ function lsGetSelectedProfileId(): string | null {
     return v ? String(v) : null;
 }
 
-function lsSetSelectedProfileId(osuUserId: number | null) {
-    save<string | null>(LS_SELECTED, osuUserId == null ? null : String(osuUserId));
-}
+
 
 async function ensureDevice() {
     const deviceId = getDeviceId();
-    await fetch(`${API}/api/device`, {
+    await apiFetch(`/api/device`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deviceId }),
@@ -116,7 +122,7 @@ function extractUserIdFromUrl(url: string): number | null {
 }
 
 async function fetchUser(userId: number, mode: Mode) {
-    const r = await fetch(`${API}/api/users/${userId}/${mode}`);
+    const r = await apiFetch(`/api/users/${userId}/${mode}`);
     if (!r.ok) throw new Error(`User fetch failed (${r.status})`);
     return r.json();
 }
@@ -127,7 +133,7 @@ async function fetchScores(
     type: "best" | "firsts",
     limit = 3
 ) {
-    const r = await fetch(`${API}/api/scores/${userId}/${mode}?type=${type}&limit=${limit}`);
+    const r = await apiFetch(`/api/scores/${userId}/${mode}?type=${type}&limit=${limit}`);
     if (!r.ok) throw new Error(`Scores fetch failed (${r.status})`);
     return r.json();
 }
@@ -199,8 +205,8 @@ function toIsoFromAnyTs(x: any): string | null {
 async function d1ListReports(osuUserId: number, mode: Mode): Promise<Report[]> {
     const deviceId = await ensureDevice();
 
-    const r = await fetch(
-        `${API}/api/reports?deviceId=${encodeURIComponent(deviceId)}&osuUserId=${encodeURIComponent(
+    const r = await apiFetch(
+        `/api/reports?deviceId=${encodeURIComponent(deviceId)}&osuUserId=${encodeURIComponent(
             String(osuUserId)
         )}&mode=${encodeURIComponent(mode)}`
     );
@@ -265,14 +271,12 @@ async function d1CreateReport(payload: {
 
     const reportObj = (payload as any).report;
 
-    const r = await fetch(`${API}/api/report`, {
+    const r = await apiFetch(`/api/report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             deviceId,
             ...payload,
-
-            // ✅ дублируем под разные ожидания воркера/БД
             reportJson: reportObj,
             report_json: typeof reportObj === "string" ? reportObj : JSON.stringify(reportObj),
         }),
@@ -294,8 +298,8 @@ async function d1CreateReport(payload: {
 async function d1DeleteReport(id: string): Promise<void> {
     const deviceId = getDeviceId();
 
-    const r = await fetch(
-        `${API}/api/report/${encodeURIComponent(id)}?deviceId=${encodeURIComponent(deviceId)}`,
+    const r = await apiFetch(
+        `/api/report/${encodeURIComponent(id)}?deviceId=${encodeURIComponent(deviceId)}`,
         { method: "DELETE" }
     );
 
@@ -436,7 +440,7 @@ export const webApi = {
 
 async function d1ProfilesGet() {
     const deviceId = getDeviceId();
-    const r = await fetch(`${API}/api/profiles?deviceId=${encodeURIComponent(deviceId)}`);
+    const r = await apiFetch(`/api/profiles?deviceId=${encodeURIComponent(deviceId)}`);
     const j = await r.json().catch(() => null);
     if (!r.ok) throw new Error(String((j as any)?.error || `Profiles fetch failed (${r.status})`));
 
@@ -453,7 +457,7 @@ async function d1ProfilesGet() {
 
 async function d1ProfilesAdd(p: { osuUserId: number; username: string; avatarUrl: string }) {
     const deviceId = getDeviceId();
-    const r = await fetch(`${API}/api/profiles`, {
+    const r = await apiFetch(`/api/profiles`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deviceId, ...p }),
@@ -464,8 +468,8 @@ async function d1ProfilesAdd(p: { osuUserId: number; username: string; avatarUrl
 
 async function d1ProfilesRemove(osuUserId: number) {
     const deviceId = getDeviceId();
-    const r = await fetch(
-        `${API}/api/profiles/${encodeURIComponent(String(osuUserId))}?deviceId=${encodeURIComponent(deviceId)}`,
+    const r = await apiFetch(
+        `/api/profiles/${encodeURIComponent(String(osuUserId))}?deviceId=${encodeURIComponent(deviceId)}`,
         { method: "DELETE" }
     );
     const j = await r.json().catch(() => null);
