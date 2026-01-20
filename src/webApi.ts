@@ -213,82 +213,46 @@ async function d1ListReports(osuUserId: number, mode: Mode): Promise<Report[]> {
         throw new Error(String(msg));
     }
 
-    const rows = Array.isArray(j) ? j : [];
+    const arr = Array.isArray(j) ? j : [];
 
-    return rows
-        .map((row: any) => {
-            // ✅ 1) репорт может быть целиком в report_json / reportJson / report
-            const embedded =
-                row?.report ??
-                row?.report_json ??
-                row?.reportJson ??
-                null;
+    // ✅ ВАЖНО: воркер уже возвращает готовые репорты, не строки D1.
+    return arr
+        .map((rep: any) => {
+            if (!rep || typeof rep !== "object") return null;
 
-            const rep =
-                typeof embedded === "string"
-                    ? (() => { try { return JSON.parse(embedded); } catch { return null; } })()
-                    : embedded;
+            const created = typeof rep.createdAt === "string"
+                ? rep.createdAt
+                : new Date().toISOString();
 
-            // ✅ 2) базовые поля берём из embedded, но перетираем id/createdAt из строки (D1 truth)
-            const created =
-                toIsoFromAnyTs(row?.created_at ?? row?.createdAt) ??
-                rep?.createdAt ??
-                new Date().toISOString();
+            const safe: Report = {
+                id: String(rep.id ?? ""),
+                createdAt: created,
+                title: String(rep.title ?? `${rep.username ?? "user"} report`),
+                userId: String(rep.userId ?? rep.osuUserId ?? rep.osu_user_id ?? osuUserId),
+                mode: (rep.mode ?? mode) as Mode,
+                username: String(rep.username ?? "user"),
+                avatarUrl: String(rep.avatarUrl ?? rep.avatar_url ?? ""),
+                stats: rep.stats ?? {
+                    globalRank: null,
+                    countryRank: null,
+                    pp: null,
+                    accuracy: null,
+                    playcount: null,
+                    rankedScore: null,
+                    totalScore: null,
+                    totalHits: null,
+                    maximumCombo: null,
+                    replaysWatchedByOthers: null,
+                    grades: { ss: null, ssh: null, s: null, sh: null, a: null },
+                },
+                bestScores: Array.isArray(rep.bestScores) ? rep.bestScores : undefined,
+                firstScores: Array.isArray(rep.firstScores) ? rep.firstScores : undefined,
+            };
 
-            const id = String(row?.id ?? rep?.id ?? "");
-
-            const userId =
-                String(
-                    rep?.userId ??
-                    row?.osuUserId ??
-                    row?.osu_user_id ??
-                    row?.osuUserId ??
-                    osuUserId
-                );
-
-            const avatarUrl = rep?.avatarUrl ?? row?.avatar_url ?? row?.avatarUrl ?? "";
-            const username = rep?.username ?? row?.username ?? "user";
-
-            const finalMode = (rep?.mode ?? row?.mode ?? mode) as Mode;
-
-            // ✅ если репорта внутри нет — строим минимальный
-            const safe: Report = rep && typeof rep === "object"
-                ? {
-                    ...rep,
-                    id,
-                    createdAt: created,
-                    userId,
-                    mode: finalMode,
-                    username,
-                    avatarUrl,
-                }
-                : {
-                    id,
-                    createdAt: created,
-                    title: `${username} report ${created.slice(8, 10)}.${created.slice(5, 7)}.${created.slice(0, 4)}`,
-                    userId,
-                    mode: finalMode,
-                    username,
-                    avatarUrl,
-                    stats: {
-                        globalRank: null,
-                        countryRank: null,
-                        pp: null,
-                        accuracy: null,
-                        playcount: null,
-                        rankedScore: null,
-                        totalScore: null,
-                        totalHits: null,
-                        maximumCombo: null,
-                        replaysWatchedByOthers: null,
-                        grades: { ss: null, ssh: null, s: null, sh: null, a: null },
-                    },
-                };
-
+            if (!safe.id) return null;
             return safe;
         })
-        // ✅ на всякий: чистим мусорные
-        .filter((x: any) => x && x.id && x.userId);
+        .filter(Boolean) as Report[];
 }
 
 async function d1CreateReport(payload: {
