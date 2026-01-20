@@ -84,6 +84,16 @@ function getDeviceId(): string {
     return id;
 }
 
+async function ensureDevice() {
+    const deviceId = getDeviceId();
+    await fetch(`${API}/api/device`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId }),
+    }).catch(() => { });
+    return deviceId;
+}
+
 function extractUserIdFromUrl(url: string): number | null {
     const m = String(url).match(/osu\.ppy\.sh\/users\/(\d+)/i);
     return m ? Number(m[1]) : null;
@@ -171,7 +181,7 @@ function toIsoFromAnyTs(x: any): string | null {
 }
 
 async function d1ListReports(osuUserId: number, mode: Mode): Promise<Report[]> {
-    const deviceId = getDeviceId();
+    const deviceId = await ensureDevice();
 
     const r = await fetch(
         `${API}/api/reports?deviceId=${encodeURIComponent(deviceId)}&osuUserId=${encodeURIComponent(
@@ -182,21 +192,87 @@ async function d1ListReports(osuUserId: number, mode: Mode): Promise<Report[]> {
     const j = await r.json().catch(() => null);
     if (!r.ok) {
         const msg =
-            (j && typeof j === "object" && (j as any).error) || `Reports fetch failed (${r.status})`;
+            (j && typeof j === "object" && (j as any).error) ||
+            `Reports fetch failed (${r.status})`;
         throw new Error(String(msg));
     }
 
-    const arr = Array.isArray(j) ? j : [];
-    return arr.map((it: any) => {
-        const iso = toIsoFromAnyTs(it?.createdAt) ?? it?.createdAt;
-        return {
-            ...it,
-            createdAt: iso,
-            id: String(it?.id),
-            userId: String(it?.userId ?? it?.osuUserId ?? osuUserId),
-            mode: (it?.mode as Mode) ?? mode,
-        } as Report;
-    });
+    const rows = Array.isArray(j) ? j : [];
+
+    return rows
+        .map((row: any) => {
+            // ✅ 1) репорт может быть целиком в report_json / reportJson / report
+            const embedded =
+                row?.report ??
+                row?.report_json ??
+                row?.reportJson ??
+                null;
+
+            const rep =
+                typeof embedded === "string"
+                    ? (() => { try { return JSON.parse(embedded); } catch { return null; } })()
+                    : embedded;
+
+            // ✅ 2) базовые поля берём из embedded, но перетираем id/createdAt из строки (D1 truth)
+            const created =
+                toIsoFromAnyTs(row?.created_at ?? row?.createdAt) ??
+                rep?.createdAt ??
+                new Date().toISOString();
+
+            const id = String(row?.id ?? rep?.id ?? "");
+
+            const userId =
+                String(
+                    rep?.userId ??
+                    row?.osuUserId ??
+                    row?.osu_user_id ??
+                    row?.osuUserId ??
+                    osuUserId
+                );
+
+            const avatarUrl = rep?.avatarUrl ?? row?.avatar_url ?? row?.avatarUrl ?? "";
+            const username = rep?.username ?? row?.username ?? "user";
+
+            const finalMode = (rep?.mode ?? row?.mode ?? mode) as Mode;
+
+            // ✅ если репорта внутри нет — строим минимальный
+            const safe: Report = rep && typeof rep === "object"
+                ? {
+                    ...rep,
+                    id,
+                    createdAt: created,
+                    userId,
+                    mode: finalMode,
+                    username,
+                    avatarUrl,
+                }
+                : {
+                    id,
+                    createdAt: created,
+                    title: `${username} report ${created.slice(8, 10)}.${created.slice(5, 7)}.${created.slice(0, 4)}`,
+                    userId,
+                    mode: finalMode,
+                    username,
+                    avatarUrl,
+                    stats: {
+                        globalRank: null,
+                        countryRank: null,
+                        pp: null,
+                        accuracy: null,
+                        playcount: null,
+                        rankedScore: null,
+                        totalScore: null,
+                        totalHits: null,
+                        maximumCombo: null,
+                        replaysWatchedByOthers: null,
+                        grades: { ss: null, ssh: null, s: null, sh: null, a: null },
+                    },
+                };
+
+            return safe;
+        })
+        // ✅ на всякий: чистим мусорные
+        .filter((x: any) => x && x.id && x.userId);
 }
 
 async function d1CreateReport(payload: {
@@ -383,7 +459,7 @@ async function d1ProfilesRemove(osuUserId: number) {
 
 async function d1ProfilesSelect(osuUserId: number | null) {
     const deviceId = getDeviceId();
-    const r = await fetch(`${API}/api/profiles/select`, {
+    const r = await fetch(`${API}/api/select`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deviceId, osuUserId }),
