@@ -299,10 +299,19 @@ async function d1CreateReport(payload: {
 }): Promise<{ id: string; createdAt: string | null }> {
     const deviceId = getDeviceId();
 
+    const reportObj = (payload as any).report;
+
     const r = await fetch(`${API}/api/report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId, ...payload }),
+        body: JSON.stringify({
+            deviceId,
+            ...payload,
+
+            // ✅ дублируем под разные ожидания воркера/БД
+            reportJson: reportObj,
+            report_json: typeof reportObj === "string" ? reportObj : JSON.stringify(reportObj),
+        }),
     });
 
     const j = await r.json().catch(() => null);
