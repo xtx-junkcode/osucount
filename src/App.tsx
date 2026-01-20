@@ -190,42 +190,26 @@ export default function App() {
   const modalRef = useRef<HTMLDivElement | null>(null);
   const [shotAskOpen, setShotAskOpen] = useState(false);
 
-  async function refresh(osuUserId?: number | null, m?: "mania" | "osu") {
+  async function refresh(osuUserId?: number | null) {
+    // если профиль не выбран — просто пусто
     if (!osuUserId) {
       setReports([]);
       return;
     }
 
-    const modeQ = m ?? mode;
+    // ✅ тянем через api, чтобы deviceId совпадал (LS_DEVICE)
+    const all = (await api.listReports()) as Report[];
 
-    // воркер возвращает массив репортов (уже rep, не {report_json: "..."} )
-    const rows = await workerJson(
-      `/api/reports?osuUserId=${encodeURIComponent(String(osuUserId))}&mode=${encodeURIComponent(modeQ)}`
-    );
-
-    const list: Report[] = (Array.isArray(rows) ? rows : [])
-      .map((rep: any) => {
-        const createdAt = rep?.createdAt
-          ? String(rep.createdAt).includes("T")
-            ? String(rep.createdAt)
-            : toIsoFromCreatedAt(rep.createdAt)
-          : new Date().toISOString();
-
-        return {
-          ...rep,
-          id: String(rep?.id),
-          createdAt,
-          mode: (rep?.mode ?? modeQ) as "osu" | "mania",
-          userId: String(rep?.userId ?? osuUserId),
-        } as Report;
-      })
+    // оставляем только текущий профиль
+    const list = (Array.isArray(all) ? all : [])
+      .filter((r) => String(r.userId) === String(osuUserId))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     setReports(list);
   }
 
   useEffect(() => {
-    refresh(selectedProfileId, mode);
+    refresh(selectedProfileId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProfileId, mode]);
 
@@ -604,7 +588,7 @@ export default function App() {
       })) as Report;
 
       // ✅ обновляем список и открываем то, что создали
-      await refresh(selectedProfileId, mode);
+      await refresh(selectedProfileId);
 
       setSelectedId(String(savedReport.id));
       setOpenId(String(savedReport.id));
