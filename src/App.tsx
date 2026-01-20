@@ -289,9 +289,15 @@ export default function App() {
 
         setProfiles(list);
 
-        const sel = state?.selectedId ? Number(state.selectedId) : null;
-        const validSel = sel && list.some((p) => p.id === sel) ? sel : null;
-        setSelectedProfileId(validSel);
+        const saved = localStorage.getItem("osu_count_selected_profile_v2");
+        const savedNum = saved ? Number(saved) : null;
+
+        const sel =
+          savedNum && list.some((p) => p.id === savedNum)
+            ? savedNum
+            : (list[0]?.id ?? null);
+
+        setSelectedProfileId(sel);
       } catch (e) {
         console.error(e);
       }
@@ -960,11 +966,9 @@ export default function App() {
 
                   // ��������� ����� � main.ts (profiles.json)
                   if (idNum != null) {
-                    try {
-                      await api.profilesSelect(String(idNum));
-                    } catch (err) {
-                      console.error(err);
-                    }
+                    localStorage.setItem("osu_count_selected_profile_v2", String(idNum));
+                  } else {
+                    localStorage.removeItem("osu_count_selected_profile_v2");
                   }
                 }}
               >
@@ -1467,7 +1471,7 @@ export default function App() {
         </div>
       )}
 
-      {loading && <div className="loading">Loading stats from osu�</div>}
+      {loading && <div className="loading">Loading stats from OSU! 🪬</div>}
 
       {profilesOpen && (
         <div
