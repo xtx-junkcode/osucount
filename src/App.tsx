@@ -202,7 +202,14 @@ export default function App() {
       ...it,
       id: String(it?.id ?? ""),
       createdAt,
-      userId: String(it?.userId ?? it?.osuUserId ?? fallbackUserId ?? ""),
+      userId: String(
+        it?.userId ??
+        it?.osuUserId ??
+        it?.osu_user_id ??
+        it?.osuUserID ??
+        fallbackUserId ??
+        ""
+      ),
       mode: modeVal,
     } as Report;
   }
@@ -219,9 +226,9 @@ export default function App() {
       normalizeReport(it, osuUserId)
     );
 
-    const list = all
-      .filter((r) => String(r.userId) === String(osuUserId))
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const list = all.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     setReports(list);
   }
