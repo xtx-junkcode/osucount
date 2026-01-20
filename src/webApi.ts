@@ -53,7 +53,6 @@ const LS_SELECTED = "osu_count_selected_profile_v1";
 const LS_DEVICE = "osu_count_device_id_v1";
 
 void LS_PROFILES;
-void LS_SELECTED;
 
 // (оставляю, чтобы ничего не ломать и можно было мигрировать/откатить)
 const LS_REPORTS = "osu_count_reports_v1";
@@ -82,6 +81,15 @@ function getDeviceId(): string {
 
     save(LS_DEVICE, id);
     return id;
+}
+
+function lsGetSelectedProfileId(): string | null {
+    const v = load<string | null>(LS_SELECTED, null);
+    return v ? String(v) : null;
+}
+
+function lsSetSelectedProfileId(osuUserId: number | null) {
+    save<string | null>(LS_SELECTED, osuUserId == null ? null : String(osuUserId));
 }
 
 async function ensureDevice() {
@@ -432,8 +440,17 @@ async function d1ProfilesGet() {
     const deviceId = getDeviceId();
     const r = await fetch(`${API}/api/profiles?deviceId=${encodeURIComponent(deviceId)}`);
     const j = await r.json().catch(() => null);
-    if (!r.ok) throw new Error(String(j?.error || `Profiles fetch failed (${r.status})`));
-    return j as { profiles: PlayerProfile[]; selectedId: string | null };
+    if (!r.ok) throw new Error(String((j as any)?.error || `Profiles fetch failed (${r.status})`));
+
+    const profiles = ((j as any)?.profiles ?? []) as PlayerProfile[];
+    const serverSelected = (j as any)?.selectedId ?? null;
+
+    // если воркер не хранит selectedId — берём из localStorage
+    const localSelected = lsGetSelectedProfileId();
+
+    const selectedId = serverSelected ? String(serverSelected) : (localSelected ? String(localSelected) : null);
+
+    return { profiles, selectedId };
 }
 
 async function d1ProfilesAdd(p: { osuUserId: number; username: string; avatarUrl: string }) {
@@ -459,12 +476,44 @@ async function d1ProfilesRemove(osuUserId: number) {
 
 async function d1ProfilesSelect(osuUserId: number | null) {
     const deviceId = getDeviceId();
-    const r = await fetch(`${API}/api/select`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId, osuUserId }),
-    });
-    const j = await r.json().catch(() => null);
-    if (!r.ok) throw new Error(String(j?.error || `Profiles select failed (${r.status})`));
-    return j as { ok: true; selectedId: string | null };
+
+    try {
+        const r = await fetch(`${API}/api/profiles/select`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ deviceId, osuUserId }),
+        });
+
+        // 404 / Not found -> воркер не имеет роута, используем local fallback
+        if (r.status === 404) {
+            lsSetSelectedProfileId(osuUserId);
+            return { ok: true as const, selectedId: osuUserId == null ? null : String(osuUserId) };
+        }
+
+        const j = await r.json().catch(() => null);
+
+        // некоторые роуты могут отвечать { error: "Not found" }
+        const errText =
+            (j && typeof j === "object" && ((j as any).error || (j as any).message))
+                ? String((j as any).error || (j as any).message)
+                : "";
+
+        if (!r.ok) {
+            if (/not found/i.test(errText)) {
+                lsSetSelectedProfileId(osuUserId);
+                return { ok: true as const, selectedId: osuUserId == null ? null : String(osuUserId) };
+            }
+            throw new Error(errText || `Profiles select failed (${r.status})`);
+        }
+
+        // если успех — считаем что сервер принял выбор
+        // но на всякий — сохраним и локально, чтобы UI был стабильный
+        lsSetSelectedProfileId(osuUserId);
+
+        return j as { ok: true; selectedId: string | null };
+    } catch (e) {
+        // сеть/корс/что угодно -> тоже fallback
+        lsSetSelectedProfileId(osuUserId);
+        return { ok: true as const, selectedId: osuUserId == null ? null : String(osuUserId) };
+    }
 }
