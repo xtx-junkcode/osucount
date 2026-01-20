@@ -361,14 +361,13 @@ export const webApi = {
         setSelectedLocal(v);
 
         // возвращаем состояние как будто "выбрали"
-        return await this.profilesGet();
+        return await d1ProfilesGet();
     },
 
     async profilesAddByUrl(profileUrl: string) {
         const userId = extractUserIdFromUrl(profileUrl);
         if (!userId) throw new Error("Bad profile link. Need https://osu.ppy.sh/users/<id>");
 
-        // берём mania чтобы всегда был username/avatar
         const user = await fetchUser(userId, "mania");
 
         await d1ProfilesAdd({
@@ -377,7 +376,10 @@ export const webApi = {
             avatarUrl: user.avatar_url,
         });
 
-        return await d1ProfilesGet();
+        // ✅ авто-выбор добавленного профиля
+        setSelectedLocal(String(user.id));
+
+        return await this.profilesGet();
     },
 
     async profilesRemove(id: string) {
