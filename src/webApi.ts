@@ -51,8 +51,16 @@ type Report = {
 const LS_PROFILES = "osu_count_profiles_v1";
 const LS_SELECTED = "osu_count_selected_profile_v1";
 const LS_DEVICE = "osu_count_device_id_v1";
-
 void LS_PROFILES;
+
+function getSelectedLocal(): string | null {
+    const v = load<string | null>(LS_SELECTED, null);
+    return v ? String(v) : null;
+}
+
+function setSelectedLocal(v: string | null) {
+    save(LS_SELECTED, v ? String(v) : null);
+}
 
 // (оставляю, чтобы ничего не ломать и можно было мигрировать/откатить)
 const LS_REPORTS = "osu_count_reports_v1";
@@ -329,12 +337,31 @@ async function d1DeleteReport(id: string): Promise<void> {
 export const webApi = {
     // ---- profiles ----
     async profilesGet() {
-        return await d1ProfilesGet();
+        const state = await d1ProfilesGet(); // { profiles, selectedId }
+        const list = state?.profiles ?? [];
+
+        // выбранный берём из localStorage (потому что /select сейчас 404)
+        const localSel = getSelectedLocal();
+        const validLocal = localSel && list.some(p => String(p.id) === String(localSel)) ? localSel : null;
+
+        const serverSel = state?.selectedId ? String(state.selectedId) : null;
+        const validServer = serverSel && list.some(p => String(p.id) === String(serverSel)) ? serverSel : null;
+
+        const selectedId = validLocal ?? validServer ?? null;
+
+        // если localSel был невалидный — подчистим
+        if (localSel && !validLocal) setSelectedLocal(null);
+
+        return { profiles: list, selectedId };
     },
 
     async profilesSelect(id: string) {
-        await d1ProfilesSelect(id ? Number(id) : null);
-        return await d1ProfilesGet();
+        // просто сохраняем локально
+        const v = id ? String(id) : null;
+        setSelectedLocal(v);
+
+        // возвращаем состояние как будто "выбрали"
+        return await this.profilesGet();
     },
 
     async profilesAddByUrl(profileUrl: string) {
@@ -358,10 +385,10 @@ export const webApi = {
         return await d1ProfilesGet();
     },
 
+
     async listReports() {
-        // selectedId берём из D1 (а не из LS)
-        const state = await d1ProfilesGet(); // { profiles, selectedId } или { ok, profiles, selectedId }
-        const selectedId = (state as any)?.selectedId ?? null;
+        // 1) берём выбранный из localStorage
+        const selectedId = getSelectedLocal();
         if (!selectedId) return [];
 
         const uid = Number(selectedId);
@@ -373,11 +400,7 @@ export const webApi = {
         ]);
 
         const all = [...mania, ...osu];
-        all.sort(
-            (a, b) =>
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-
+        all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         return all;
     },
 
@@ -472,48 +495,4 @@ async function d1ProfilesRemove(osuUserId: number) {
     );
     const j = await r.json().catch(() => null);
     if (!r.ok) throw new Error(String(j?.error || `Profiles delete failed (${r.status})`));
-}
-
-async function d1ProfilesSelect(osuUserId: number | null) {
-    const deviceId = getDeviceId();
-
-    try {
-        const r = await fetch(`${API}/api/profiles/select`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ deviceId, osuUserId }),
-        });
-
-        // 404 / Not found -> воркер не имеет роута, используем local fallback
-        if (r.status === 404) {
-            lsSetSelectedProfileId(osuUserId);
-            return { ok: true as const, selectedId: osuUserId == null ? null : String(osuUserId) };
-        }
-
-        const j = await r.json().catch(() => null);
-
-        // некоторые роуты могут отвечать { error: "Not found" }
-        const errText =
-            (j && typeof j === "object" && ((j as any).error || (j as any).message))
-                ? String((j as any).error || (j as any).message)
-                : "";
-
-        if (!r.ok) {
-            if (/not found/i.test(errText)) {
-                lsSetSelectedProfileId(osuUserId);
-                return { ok: true as const, selectedId: osuUserId == null ? null : String(osuUserId) };
-            }
-            throw new Error(errText || `Profiles select failed (${r.status})`);
-        }
-
-        // если успех — считаем что сервер принял выбор
-        // но на всякий — сохраним и локально, чтобы UI был стабильный
-        lsSetSelectedProfileId(osuUserId);
-
-        return j as { ok: true; selectedId: string | null };
-    } catch (e) {
-        // сеть/корс/что угодно -> тоже fallback
-        lsSetSelectedProfileId(osuUserId);
-        return { ok: true as const, selectedId: osuUserId == null ? null : String(osuUserId) };
-    }
 }

@@ -230,7 +230,44 @@ export default function App() {
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
-    setReports(list);
+    setReports((prev) => {
+      const prevById = new Map((prev ?? []).map(r => [String(r.id), r]));
+
+      function isEmptyStats(r: any) {
+        const s = r?.stats;
+        if (!s) return true;
+        // если основные поля null и grades нули/нуллы — считаем пустым
+        const mainEmpty =
+          s.pp == null &&
+          s.accuracy == null &&
+          s.playcount == null &&
+          s.totalScore == null &&
+          s.totalHits == null &&
+          s.maximumCombo == null &&
+          s.globalRank == null &&
+          s.countryRank == null;
+
+        const g = s.grades || {};
+        const gradesEmpty =
+          (g.ss ?? null) == null &&
+          (g.ssh ?? null) == null &&
+          (g.s ?? null) == null &&
+          (g.sh ?? null) == null &&
+          (g.a ?? null) == null;
+
+        return mainEmpty && gradesEmpty;
+      }
+
+      return list.map((r) => {
+        const old = prevById.get(String(r.id));
+        if (!old) return r;
+
+        // если D1 прислал "пустышку", а у нас был нормальный — оставляем старый
+        if (isEmptyStats(r) && !isEmptyStats(old)) return old;
+
+        return r;
+      });
+    });
   }
 
   useEffect(() => {
