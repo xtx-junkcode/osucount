@@ -190,18 +190,36 @@ export default function App() {
   const modalRef = useRef<HTMLDivElement | null>(null);
   const [shotAskOpen, setShotAskOpen] = useState(false);
 
+  function normalizeReport(it: any, fallbackUserId?: number | null): Report {
+    const createdAt =
+      typeof it?.createdAt === "string"
+        ? it.createdAt
+        : new Date(Number(String(it?.createdAt ?? Date.now()).replace(/\.0$/, ""))).toISOString();
+
+    const modeVal = (it?.mode === "osu" || it?.mode === "mania") ? it.mode : "mania";
+
+    return {
+      ...it,
+      id: String(it?.id ?? ""),
+      createdAt,
+      userId: String(it?.userId ?? it?.osuUserId ?? fallbackUserId ?? ""),
+      mode: modeVal,
+    } as Report;
+  }
+
   async function refresh(osuUserId?: number | null) {
-    // если профиль не выбран — просто пусто
     if (!osuUserId) {
       setReports([]);
       return;
     }
 
-    // ✅ тянем через api, чтобы deviceId совпадал (LS_DEVICE)
-    const all = (await api.listReports()) as Report[];
+    const allRaw = await api.listReports();
 
-    // оставляем только текущий профиль
-    const list = (Array.isArray(all) ? all : [])
+    const all = (Array.isArray(allRaw) ? allRaw : []).map((it: any) =>
+      normalizeReport(it, osuUserId)
+    );
+
+    const list = all
       .filter((r) => String(r.userId) === String(osuUserId))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -583,17 +601,31 @@ export default function App() {
         return;
       }
 
-      // ✅ createReport сам: тянет user/scores и сохраняет в D1
-      const savedReport = (await api.createReport({
+      const createdRaw = await api.createReport({
         mode,
         userId: String(selectedProfileId),
-      })) as Report;
+      });
 
-      // ✅ обновляем список и открываем то, что создали
+      const created = normalizeReport(createdRaw, selectedProfileId);
+
+      // ✅ мгновенно показываем в списке
+      setReports((prev) => {
+        const next = [created, ...(prev ?? [])];
+        const seen = new Set<string>();
+        return next.filter((r) => {
+          const id = String(r?.id ?? "");
+          if (!id) return false;
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+      });
+
+      setSelectedId(String(created.id));
+      setOpenId(String(created.id));
+
+      // ✅ и сразу подтягиваем "истину" из D1
       await refresh(selectedProfileId);
-
-      setSelectedId(String(savedReport.id));
-      setOpenId(String(savedReport.id));
     } catch (e: any) {
       alert(e?.message ?? String(e));
     } finally {
