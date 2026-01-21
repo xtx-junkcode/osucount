@@ -177,7 +177,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
+  const [authUser, setAuthUser] = useState<{ osuId: number; username: string; avatarUrl: string } | null>(null);
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [profilesOpen, setProfilesOpen] = useState(false);
@@ -279,6 +279,16 @@ export default function App() {
     (api as any).bootstrapAuthFromHash?.();
     (async () => {
       try {
+        // ✅ 1) забрать токен из #token=... (если пришли после OAuth)
+        if ((api as any).authInitFromHash) {
+          (api as any).authInitFromHash();
+        }
+
+        // ✅ 2) проверить кто залогинен
+        if ((api as any).authMe) {
+          const me = await (api as any).authMe();
+          setAuthUser(me?.ok ? me.user : null);
+        }
         const state = await api.profilesGet();
         // state: { profiles: [{id, username, avatarUrl}], selectedId: string|null }
 
@@ -953,6 +963,41 @@ export default function App() {
         </div>
 
         <div className="actions">
+          <div className="authBlock">
+            {authUser ? (
+              <button
+                className="authUser"
+                type="button"
+                onClick={async () => {
+                  await api.authLogout?.();
+                  setAuthUser(null);
+                  // по желанию: очистить профили/выбор
+                  // setProfiles([]);
+                  // setSelectedProfileId(null);
+                }}
+                title="Logout"
+              >
+                <img className="authAvatar" src={authUser.avatarUrl} alt="" />
+                <span className="authName">{authUser.username}</span>
+                <span className="authHint">Logout</span>
+              </button>
+            ) : (
+              <button
+                className="btn ghost"
+                type="button"
+                onClick={() => {
+                  // стартуем OAuth
+                  // ВАЖНО: WORKER_BASE у тебя уже есть ниже, но тут выше по коду.
+                  // Поэтому используем прям apiFetch базу проще:
+                  const base = (import.meta as any).env?.VITE_WORKER_BASE || "";
+                  const API_BASE = base ? String(base).replace(/\/$/, "") : "";
+                  window.location.href = `${API_BASE}/api/auth/start`;
+                }}
+              >
+                Login
+              </button>
+            )}
+          </div>
           <div className="profilesBlock">
             <div className="profileSelectWrap">
               <select

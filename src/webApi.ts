@@ -5,17 +5,21 @@ const API = "https://lively-bonus-8219.jmvmncpgsw.workers.dev";
 async function apiFetch(path: string, init: RequestInit = {}) {
     const url = path.startsWith("http") ? path : `${API}${path}`;
 
-    // ✅ собираем headers нормально
-    const headers = new Headers(init.headers || undefined);
-
-    // ✅ добавляем Bearer токен, если есть
     const tok = getAuthToken();
+
+    // аккуратно мержим headers
+    const headers = new Headers(init.headers || {});
+    // Content-Type ставим только если его ещё нет
+    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+    // ✅ главное: Bearer
     if (tok) headers.set("Authorization", `Bearer ${tok}`);
 
     return fetch(url, {
         ...init,
         headers,
-        credentials: "include", // пусть останется, Chrome тоже норм
+        // можно оставить include — не мешает, но уже не критично
+        credentials: "include",
     });
 }
 
@@ -343,6 +347,49 @@ async function d1DeleteReport(id: string): Promise<void> {
 }
 
 export const webApi = {
+
+    // ---- auth ----
+    authInitFromHash() {
+        // ожидаем /#token=....
+        const h = window.location.hash || "";
+        const m = h.match(/#token=([^&]+)/);
+        if (!m) return false;
+
+        const tok = decodeURIComponent(m[1]);
+        if (!tok) return false;
+
+        setAuthToken(tok);
+
+        // подчистим URL, чтобы токен не светился
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+        return true;
+    },
+
+    async authMe() {
+        // воркер должен уметь принимать Bearer (у тебя уже getSessionFromRequest есть)
+        const r = await apiFetch(`/api/auth/me`, { method: "GET" });
+        const j = await r.json().catch(() => null);
+
+        // если не ок — считаем что не залогинен
+        if (!r.ok) return { ok: false, user: null };
+
+        return j;
+    },
+
+    async authLogout() {
+        // локально “вышли” сразу
+        setAuthToken(null);
+
+        // серверный logout можно дернуть чисто чтобы подчистить cookies если где-то остались
+        try {
+            await apiFetch(`/api/auth/logout`, { method: "POST" });
+        } catch {
+            // пофиг
+        }
+
+        return true;
+    },
+
     bootstrapAuthFromHash,
     // ---- profiles ----
     async profilesGet() {
