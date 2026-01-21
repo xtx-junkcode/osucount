@@ -276,6 +276,7 @@ export default function App() {
   }, [selectedProfileId, mode]);
 
   useEffect(() => {
+    (api as any).bootstrapAuthFromHash?.();
     (async () => {
       try {
         const state = await api.profilesGet();

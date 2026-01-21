@@ -4,9 +4,18 @@ const API = "https://lively-bonus-8219.jmvmncpgsw.workers.dev";
 
 async function apiFetch(path: string, init: RequestInit = {}) {
     const url = path.startsWith("http") ? path : `${API}${path}`;
+
+    // ✅ собираем headers нормально
+    const headers = new Headers(init.headers || undefined);
+
+    // ✅ добавляем Bearer токен, если есть
+    const tok = getAuthToken();
+    if (tok) headers.set("Authorization", `Bearer ${tok}`);
+
     return fetch(url, {
         ...init,
-        credentials: "include", // ВАЖНО: чтобы слались cookies osu_sess
+        headers,
+        credentials: "include", // пусть останется, Chrome тоже норм
     });
 }
 
@@ -60,6 +69,28 @@ const LS_PROFILES = "osu_count_profiles_v1";
 const LS_SELECTED = "osu_count_selected_profile_v1";
 const LS_DEVICE = "osu_count_device_id_v1";
 void LS_PROFILES;
+
+const LS_AUTH_TOKEN = "osu_count_auth_token_v1";
+
+function getAuthToken(): string | null {
+    return load<string | null>(LS_AUTH_TOKEN, null);
+}
+
+function setAuthToken(tok: string | null) {
+    save<string | null>(LS_AUTH_TOKEN, tok ? String(tok) : null);
+}
+
+function bootstrapAuthFromHash() {
+    const h = window.location.hash || "";
+    const m = h.match(/[#&]token=([^&]+)/);
+    if (!m) return;
+
+    const tok = decodeURIComponent(m[1] || "");
+    if (tok) setAuthToken(tok);
+
+    // ✅ чистим хеш, чтобы токен не светился в URL
+    history.replaceState(null, document.title, window.location.pathname + window.location.search);
+}
 
 function getSelectedLocal(): string | null {
     const v = load<string | null>(LS_SELECTED, null);
@@ -312,6 +343,7 @@ async function d1DeleteReport(id: string): Promise<void> {
 }
 
 export const webApi = {
+    bootstrapAuthFromHash,
     // ---- profiles ----
     async profilesGet() {
         const state = await d1ProfilesGet(); // { profiles, selectedId }
