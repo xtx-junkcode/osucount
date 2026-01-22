@@ -59,6 +59,8 @@ type Report = {
   firstScores?: ScoreItem[];
 };
 
+
+
 function fmtInt(n: number | null) {
   if (n === null || n === undefined) return "�";
   return new Intl.NumberFormat("ru-RU").format(n);
@@ -178,6 +180,7 @@ export default function App() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [authUser, setAuthUser] = useState<{ osuId: number; username: string; avatarUrl: string } | null>(null);
+  const [authHover, setAuthHover] = useState(false);
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [profilesOpen, setProfilesOpen] = useState(false);
@@ -274,6 +277,33 @@ export default function App() {
     refresh(selectedProfileId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProfileId, mode]);
+
+  useEffect(() => {
+    (async () => {
+      // 1) забрать токен из hash (если пришли после osu callback)
+      const h = window.location.hash || "";
+      const m = h.match(/token=([^&]+)/i);
+      if (m && m[1]) {
+        const tok = decodeURIComponent(m[1]);
+        // сохранить
+        (api as any).setAuthToken?.(tok); // если нет — ок
+        localStorage.setItem("osu_count_auth_token_v1", JSON.stringify(tok));
+
+        // убрать hash чтобы не светить токен
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+
+      // 2) проверить кто мы
+      try {
+        const me = await api.authMe();
+        if (me?.ok && me?.user) setAuthUser(me.user);
+        else setAuthUser(null);
+      } catch {
+        setAuthUser(null);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     (api as any).bootstrapAuthFromHash?.();
@@ -694,6 +724,30 @@ export default function App() {
     }
   }
 
+  async function doLogout() {
+    try {
+      await api.authLogout(); // вызывает /api/auth/logout и чистит токен локально (в webApi)
+    } catch {
+      // даже если сервер упал — всё равно чистим UI
+    }
+
+    // моментально чистим UI
+    setAuthUser(null);
+    setProfiles([]);
+    setSelectedProfileId(null);
+
+    setReports([]);
+    setSelectedId(null);
+    setOpenId(null);
+
+    setProfilesOpen(false);
+    setProfileError(null);
+    setProfileLink("");
+
+    // у тебя это локальный ключ в App.tsx — подчистим тоже
+    localStorage.removeItem("osu_count_selected_profile_v2");
+  }
+
   async function onDelete() {
     if (!selectedId) return;
     const ok = confirm("Delete selected report?");
@@ -968,13 +1022,7 @@ export default function App() {
               <button
                 className="authUser"
                 type="button"
-                onClick={async () => {
-                  await api.authLogout?.();
-                  setAuthUser(null);
-                  // по желанию: очистить профили/выбор
-                  // setProfiles([]);
-                  // setSelectedProfileId(null);
-                }}
+                onClick={doLogout}
                 title="Logout"
               >
                 <img className="authAvatar" src={authUser.avatarUrl} alt="" />

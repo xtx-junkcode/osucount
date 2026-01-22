@@ -6,20 +6,17 @@ async function apiFetch(path: string, init: RequestInit = {}) {
     const url = path.startsWith("http") ? path : `${API}${path}`;
 
     const tok = getAuthToken();
+    const headers: Record<string, string> = {
+        ...(init.headers as any),
+    };
 
-    // аккуратно мержим headers
-    const headers = new Headers(init.headers || {});
-    // Content-Type ставим только если его ещё нет
-    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-
-    // ✅ главное: Bearer
-    if (tok) headers.set("Authorization", `Bearer ${tok}`);
+    // важно: если токен есть — шлём Authorization
+    if (tok) headers["Authorization"] = `Bearer ${tok}`;
 
     return fetch(url, {
         ...init,
         headers,
-        // можно оставить include — не мешает, но уже не критично
-        credentials: "include",
+        credentials: "include", // пусть остаётся: для Chrome/кук
     });
 }
 
@@ -366,28 +363,26 @@ export const webApi = {
     },
 
     async authMe() {
-        // воркер должен уметь принимать Bearer (у тебя уже getSessionFromRequest есть)
-        const r = await apiFetch(`/api/auth/me`, { method: "GET" });
+        const r = await apiFetch(`/api/auth/me`);
         const j = await r.json().catch(() => null);
-
-        // если не ок — считаем что не залогинен
-        if (!r.ok) return { ok: false, user: null };
-
-        return j;
+        if (!r.ok) throw new Error(String((j as any)?.error || `auth/me failed (${r.status})`));
+        return j; // { ok, user }
     },
 
     async authLogout() {
-        // локально “вышли” сразу
-        setAuthToken(null);
-
-        // серверный logout можно дернуть чисто чтобы подчистить cookies если где-то остались
+        // пробуем серверный logout (куки), но даже если он упал — токен всё равно чистим
         try {
             await apiFetch(`/api/auth/logout`, { method: "POST" });
-        } catch {
-            // пофиг
-        }
+        } catch { }
 
-        return true;
+        setAuthToken(null);
+        // подчистим всё что влияет на UI
+        try {
+            localStorage.removeItem(LS_PROFILES);
+            localStorage.removeItem(LS_SELECTED);
+            localStorage.removeItem(LS_REPORTS);
+        } catch { }
+        return { ok: true };
     },
 
     bootstrapAuthFromHash,
