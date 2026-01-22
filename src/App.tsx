@@ -1004,28 +1004,7 @@ export default function App() {
         </div>
 
         <div className="actions">
-          <div className="authBlock">
-            {authUser ? (
-              <button
-                className="authUser"
-                type="button"
-                onClick={doLogout}
-                title="Logout"
-              >
-                <img className="authAvatar" src={authUser.avatarUrl} alt="" />
-                <span className="authName">{authUser.username}</span>
-                <span className="authHint">Logout</span>
-              </button>
-            ) : (
-              <button
-                className="btn ghost"
-                type="button"
-                onClick={() => (api as any).authStart?.()}
-              >
-                Login
-              </button>
-            )}
-          </div>
+
           <div className="profilesBlock">
             <div className="profileSelectWrap">
               <select
@@ -1596,6 +1575,59 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* ======= AUTH DOCK (BOTTOM-LEFT) ======= */}
+      <div className="authDockWrap" data-html2canvas-ignore="true">
+        {authUser ? (
+          <button
+            className={`authDock ${authHover ? "hover" : ""}`}
+            type="button"
+            onClick={() => {
+              // клик работает только в hover-состоянии = "Выйти?"
+              if (authHover) doLogout();
+            }}
+            onMouseEnter={() => setAuthHover(true)}
+            onMouseLeave={() => setAuthHover(false)}
+            onFocus={() => setAuthHover(true)}
+            onBlur={() => setAuthHover(false)}
+            aria-label={authHover ? "Logout" : "Account"}
+            title={authHover ? "Logout" : authUser.username}
+          >
+            <img className="authDockAvatar" src={authUser.avatarUrl} alt="" />
+
+            <span className="authDockIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M16 17v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M19 8v8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M22 12h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </span>
+
+            <span className="authDockText">
+              {authHover ? "Выйти?" : authUser.username}
+            </span>
+          </button>
+        ) : (
+          <button
+            className="authDock login"
+            type="button"
+            onClick={() => (api as any).authStart?.()}
+            aria-label="Login"
+            title="Login"
+          >
+            <span className="authDockIconOnly" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M10 17l5-5-5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M15 12H3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span className="authDockText">Login</span>
+          </button>
+        )}
+      </div>
+
       {/* ======= КНОПКА КАМЕРЫ (GLOBAL) ======= */}
       {openId && openReport && (
         <button
