@@ -1597,10 +1597,9 @@ export default function App() {
 
             <span className="authDockIcon" aria-hidden="true">
               <svg viewBox="0 0 24 24">
-                <path d="M16 17v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M19 8v8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M22 12h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M10 17l5-5-5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M15 12H3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </span>
 
@@ -1616,7 +1615,7 @@ export default function App() {
             aria-label="Login"
             title="Login"
           >
-            <span className="authDockIcon" aria-hidden="true">
+            <span className="authDockIconOnly" aria-hidden="true">
               <svg viewBox="0 0 24 24">
                 <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 <path d="M10 17l5-5-5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -1627,7 +1626,6 @@ export default function App() {
           </button>
         )}
       </div>
-
       {/* ======= КНОПКА КАМЕРЫ (GLOBAL) ======= */}
       {openId && openReport && (
         <button
