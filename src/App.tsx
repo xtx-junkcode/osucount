@@ -280,47 +280,28 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      // 1) забрать токен из hash (если пришли после osu callback)
-      const h = window.location.hash || "";
-      const m = h.match(/token=([^&]+)/i);
-      if (m && m[1]) {
-        const tok = decodeURIComponent(m[1]);
-        // сохранить
-        (api as any).setAuthToken?.(tok); // если нет — ок
-        localStorage.setItem("osu_count_auth_token_v1", JSON.stringify(tok));
-
-        // убрать hash чтобы не светить токен
-        history.replaceState(null, "", window.location.pathname + window.location.search);
-      }
-
-      // 2) проверить кто мы
       try {
-        const me = await api.authMe();
-        if (me?.ok && me?.user) setAuthUser(me.user);
-        else setAuthUser(null);
-      } catch {
-        setAuthUser(null);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+        // 1) если пришли после OAuth и в URL есть #token=...
+        // то webApi должен сам сохранить токен
+        (api as any).authInitFromHash?.();
 
-  useEffect(() => {
-    (api as any).bootstrapAuthFromHash?.();
-    (async () => {
-      try {
-        // ✅ 1) забрать токен из #token=... (если пришли после OAuth)
-        if ((api as any).authInitFromHash) {
-          (api as any).authInitFromHash();
+        // 2) узнать кто мы
+        const me = await (api as any).authMe?.();
+        const user = me?.ok ? me.user : null;
+        setAuthUser(user);
+
+        // 3) если НЕ залогинен — чистим всё и выходим
+        if (!user) {
+          setProfiles([]);
+          setSelectedProfileId(null);
+          setReports([]);
+          setSelectedId(null);
+          setOpenId(null);
+          return;
         }
 
-        // ✅ 2) проверить кто залогинен
-        if ((api as any).authMe) {
-          const me = await (api as any).authMe();
-          setAuthUser(me?.ok ? me.user : null);
-        }
+        // 4) если залогинен — грузим профили
         const state = await api.profilesGet();
-        // state: { profiles: [{id, username, avatarUrl}], selectedId: string|null }
 
         const list = (state?.profiles ?? []).map((p: any) => ({
           id: Number(p.id),
@@ -330,19 +311,24 @@ export default function App() {
 
         setProfiles(list);
 
-        const saved = localStorage.getItem("osu_count_selected_profile_v2");
-        const savedNum = saved ? Number(saved) : null;
+        const sel = state?.selectedId ? Number(state.selectedId) : (list[0]?.id ?? null);
+        setSelectedProfileId(Number.isFinite(sel as any) ? (sel as any) : null);
 
-        const sel =
-          savedNum && list.some((p) => p.id === savedNum)
-            ? savedNum
-            : (list[0]?.id ?? null);
-
-        setSelectedProfileId(sel);
+        // и сразу синхронизируем webApi (чтобы listReports точно видел выбранный профиль)
+        if (sel != null) {
+          await (api as any).profilesSelect?.(String(sel));
+        }
       } catch (e) {
         console.error(e);
+        setAuthUser(null);
+        setProfiles([]);
+        setSelectedProfileId(null);
+        setReports([]);
+        setSelectedId(null);
+        setOpenId(null);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const visibleReports = useMemo(() => {
@@ -746,6 +732,7 @@ export default function App() {
 
     // у тебя это локальный ключ в App.tsx — подчистим тоже
     localStorage.removeItem("osu_count_selected_profile_v2");
+    localStorage.removeItem("osu_count_selected_profile_v1"); // на всякий случай от старого мусора
   }
 
   async function onDelete() {
@@ -1033,14 +1020,7 @@ export default function App() {
               <button
                 className="btn ghost"
                 type="button"
-                onClick={() => {
-                  // стартуем OAuth
-                  // ВАЖНО: WORKER_BASE у тебя уже есть ниже, но тут выше по коду.
-                  // Поэтому используем прям apiFetch базу проще:
-                  const base = (import.meta as any).env?.VITE_WORKER_BASE || "";
-                  const API_BASE = base ? String(base).replace(/\/$/, "") : "";
-                  window.location.href = `${API_BASE}/api/auth/start`;
-                }}
+                onClick={() => (api as any).authStart?.()}
               >
                 Login
               </button>
@@ -1058,12 +1038,8 @@ export default function App() {
                   setSelectedProfileId(idNum);
                   setSelectedId(null);
 
-                  // ��������� ����� � main.ts (profiles.json)
-                  if (idNum != null) {
-                    localStorage.setItem("osu_count_selected_profile_v2", String(idNum));
-                  } else {
-                    localStorage.removeItem("osu_count_selected_profile_v2");
-                  }
+                  // сохраняем выбор туда же, где listReports его читает
+                  await (api as any).profilesSelect?.(idNum != null ? String(idNum) : "");
                 }}
               >
                 <option value="" disabled>

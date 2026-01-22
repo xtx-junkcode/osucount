@@ -67,7 +67,7 @@ type Report = {
 };
 
 const LS_PROFILES = "osu_count_profiles_v1";
-const LS_SELECTED = "osu_count_selected_profile_v1";
+const LS_SELECTED = "osu_count_selected_profile_v2";
 const LS_DEVICE = "osu_count_device_id_v1";
 void LS_PROFILES;
 
@@ -79,6 +79,16 @@ function getAuthToken(): string | null {
 
 function setAuthToken(tok: string | null) {
     save<string | null>(LS_AUTH_TOKEN, tok ? String(tok) : null);
+}
+
+function clearAuth() {
+    setAuthToken(null);
+    // на всякий случай убираем token из URL-хеша
+    try {
+        if (location.hash.includes("token=")) {
+            history.replaceState(null, "", location.pathname + location.search);
+        }
+    } catch { }
 }
 
 function bootstrapAuthFromHash() {
@@ -345,6 +355,23 @@ async function d1DeleteReport(id: string): Promise<void> {
 
 export const webApi = {
 
+    authStart() {
+        window.location.href = `${API}/api/auth/start`;
+    },
+
+    async authLogout() {
+        // чистим серверную сессию (если она есть), но даже если упадёт — мы всё равно чистим локально
+        try {
+            const tok = getAuthToken();
+            await apiFetch(`/api/auth/logout`, {
+                method: "POST",
+                headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+            });
+        } catch { }
+
+        clearAuth();
+    },
+
     // ---- auth ----
     authInitFromHash() {
         // ожидаем /#token=....
@@ -367,22 +394,6 @@ export const webApi = {
         const j = await r.json().catch(() => null);
         if (!r.ok) throw new Error(String((j as any)?.error || `auth/me failed (${r.status})`));
         return j; // { ok, user }
-    },
-
-    async authLogout() {
-        // пробуем серверный logout (куки), но даже если он упал — токен всё равно чистим
-        try {
-            await apiFetch(`/api/auth/logout`, { method: "POST" });
-        } catch { }
-
-        setAuthToken(null);
-        // подчистим всё что влияет на UI
-        try {
-            localStorage.removeItem(LS_PROFILES);
-            localStorage.removeItem(LS_SELECTED);
-            localStorage.removeItem(LS_REPORTS);
-        } catch { }
-        return { ok: true };
     },
 
     bootstrapAuthFromHash,
