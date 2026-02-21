@@ -16,6 +16,7 @@ import gradeSPng from "./assets/grades/s.png";
 import gradeAPng from "./assets/grades/a.png";
 import { webApi } from "./webApi";
 import html2canvas from "html2canvas";
+import bongoGif from "./assets/bongo-cat-bongo.gif";
 
 
 type ScoreItem = {
@@ -192,6 +193,7 @@ export default function App() {
   const [resultId, setResultId] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const [shotAskOpen, setShotAskOpen] = useState(false);
+  const [congratsHidden, setCongratsHidden] = useState(false);
 
   function normalizeReport(it: any, fallbackUserId?: number | null): Report {
     const createdAt =
@@ -372,6 +374,7 @@ export default function App() {
     if (!openId) return null;
     return visibleReports.find((r) => r.id === openId) ?? null;
   }, [openId, visibleReports]);
+
 
   // показывать дельты в модалке только если:
   // - comparison on
